@@ -3,6 +3,8 @@ const { defineConfig } = require('@vue/cli-service');
 module.exports = defineConfig({
     transpileDependencies: true,
     devServer: {
+        https: true, // Use HTTPS for development
+
         proxy: {
             '/api': {
                 target: 'https://localhost:7190', // Backend URL

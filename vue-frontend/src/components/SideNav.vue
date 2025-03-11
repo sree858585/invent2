@@ -59,7 +59,9 @@
                         <span v-show="isExpanded">Trending</span>
                     </router-link>
                 </li>
-                <li>
+
+                <!-- ✅ Show only if user is logged in -->
+                <li v-if="isUserLoggedIn">
                     <div class="expandable" @click="toggleSection('myCourses')">
                         <span class="icon">📋</span>
                         <span v-show="isExpanded">My Courses</span>
@@ -70,12 +72,15 @@
                         <li><router-link to="/my-courses/completed">Completed</router-link></li>
                     </ul>
                 </li>
-                <li>
+
+                <!-- ✅ Show only if user is logged in -->
+                <li v-if="isUserLoggedIn">
                     <router-link to="/my-certificates">
                         <span class="icon">📜</span>
                         <span v-show="isExpanded">My Certificates</span>
                     </router-link>
                 </li>
+
                 <li>
                     <router-link to="/course-module">
                         <span class="icon">📘</span>
@@ -97,6 +102,7 @@
                     courses: false,
                     myCourses: false,
                 },
+                isUserLoggedIn: !!localStorage.getItem("jwtToken"), // ✅ Check if user is logged in
             };
         },
         methods: {
@@ -106,6 +112,16 @@
             toggleSection(section) {
                 this.sections[section] = !this.sections[section];
             },
+            checkUserLogin() {
+                this.isUserLoggedIn = !!localStorage.getItem("jwtToken"); // ✅ Update login state
+            },
+        },
+        mounted() {
+            this.checkUserLogin();
+            window.addEventListener("storage", this.checkUserLogin); // ✅ Listen for login/logout updates
+        },
+        beforeUnmount() {
+            window.removeEventListener("storage", this.checkUserLogin);
         },
     };</script>
 
