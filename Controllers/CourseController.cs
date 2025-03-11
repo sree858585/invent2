@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using HIVTraining_Vue.Data;
-using HIVTraining_Vue.Models;
+using HIVTraining_Vue.Server.Models;
 using System.Linq;
 using System.Threading.Tasks;
 
