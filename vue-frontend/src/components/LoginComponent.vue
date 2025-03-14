@@ -22,45 +22,86 @@
 </template>
 
 <script>import apiClient from "@/axios.js";
+import eventBus from "@/eventBus.js"; // ✅ Ensure eventBus is imported
 
-    export default {
-        data() {
-            return {
-                email: "",
-                password: "",
-            };
-        },
-        methods: {
-            async handleLogin() {
-                if (!this.email || !this.password) {
-                    alert("Please enter both email and password.");
+export default {
+    data() {
+        return {
+            email: "",
+            password: "",
+        };
+    },
+    methods: {
+        async handleLogin() {
+            if (!this.email || !this.password) {
+                alert("Please enter both email and password.");
+                return;
+            }
+
+            try {
+                console.log("🔄 Attempting login with:", { email: this.email });
+
+                const response = await apiClient.post("/login/login", {
+                    email: this.email,
+                    password: this.password,
+                });
+
+                console.log("🔥 API Response:", response.data);
+
+                if (!response.data || !response.data.userId) {  // ✅ Ensure userId (GUID) exists
+                    alert("⚠️ Login successful, but user data is missing.");
+                    console.error("🚨 User ID is missing in response:", response.data);
                     return;
                 }
 
-                try {
-                    const response = await apiClient.post("/login/login", {
-                        email: this.email,
-                        password: this.password,
-                    });
+                this.handleLoginSuccess(response.data);
 
-                    const { token, userName } = response.data;
-
-                    // Store token & username in localStorage
-                    localStorage.setItem("jwtToken", token);
-                    localStorage.setItem("userName", userName);
-
-                    // Emit event to update parent component
-                    this.$emit("login-success", userName);
-                    this.$emit("close");
-
-                    alert("Login successful!");
-                } catch (error) {
-                    console.error("Login Error:", error);
-                    alert(error.response?.data?.message || "Invalid email or password!");
-                }
-            },
+            } catch (error) {
+                console.error("❌ Login Error:", error);
+                alert(error.response?.data?.message || "Invalid email or password!");
+            }
         },
-    };</script>
+
+        handleLoginSuccess(userData) {
+    console.log("🔥 Full Login Response:", userData);
+
+    if (!userData || !userData.userId) {  
+        alert("⚠️ Login successful, but user data is missing.");
+        return;
+    }
+
+    // 🔥 Ensure userId is a GUID, not an integer
+    if (typeof userData.userId !== "string" || userData.userId.length < 36) {
+        alert("⚠️ User ID format is incorrect. Expected GUID but got: " + userData.userId);
+        console.error("🚨 Incorrect User ID:", userData.userId);
+        return;
+    }
+
+    // ✅ Store Correct UserId (GUID) in localStorage
+    localStorage.setItem("userId", userData.userId);  
+    localStorage.setItem("userName", `${userData.firstName} ${userData.lastName}`);
+    localStorage.setItem("jwtToken", userData.token);
+
+    console.log("✅ Stored user details:", {
+        userId: localStorage.getItem("userId"),
+        userName: localStorage.getItem("userName"),
+        jwtToken: localStorage.getItem("jwtToken"),
+    });
+
+    eventBus.emit("auth-change");  // ✅ Notify other components
+    this.$emit("login-success", userData);
+    this.$emit("close");
+    this.reloadPage();
+},
+
+        reloadPage() {
+            setTimeout(() => {
+                window.location.reload(); // 🔄 Reload to reflect changes
+            }, 500);
+        },
+    },
+};</script>
+
 
 <style scoped>
     /* Modal Styling */

@@ -1,9 +1,11 @@
 ﻿<template>
     <div class="home-page-container">
-        <!-- ✅ Pass isUserLoggedIn as a prop -->
-        <SideNav :isUserLoggedIn="isUserLoggedIn" />
-        <!-- Header Section -->
+        <!-- ✅ Ensure SideNav is only rendered once -->
+        <template v-if="!isSideNavRendered">
+            <SideNav :isUserLoggedIn="isUserLoggedIn" />
+        </template>
 
+        <!-- Header Section -->
         <div class="header-section">
             <h1 v-if="!userName">Welcome to the Online Registration System for NYS AIDS Institute Training Centers</h1>
             <h1 v-else>Hello, {{ userName }}</h1>
@@ -40,87 +42,29 @@
                 of this page. You must be logged into your account to access the ‘My Courses’ page.
             </p>
         </div>
-        <p>
-            We offer HIV, sexually transmitted infection (STI), and viral hepatitis trainings across New York State.
-        </p>
-        <p>
-            The trainings on this site are intended for non-physician health and human services providers who offer HIV,
-            STI, and viral hepatitis prevention, testing, care, and support services. All trainings are free of charge and
-            funded by the New York State Department of Health AIDS Institute.
-        </p>
-        <p>
-            For clinical trainings, please visit <a href="https://ceitraining.org" target="_blank">ceitraining.org</a>.
-        </p>
-        <p>
-            If you require assistance with registering for a course, please contact the training center listed on the
-            course description. For a list of training centers and their contact information, click
-            <a href="#">here</a>.
-        </p>
     </div>
-
-    <!-- Explore Our Training Section -->
-    <div class="explore-training-section">
-        <h2>Explore Our Training Programs</h2>
-        <div class="training-cards">
-            <div class="card">
-                <img src="/images/in-person-training.jpg" alt="In-Person Training" />
-                <h3>In-Person Training</h3>
-                <p>Join face-to-face sessions for an immersive learning experience.</p>
-            </div>
-            <div class="card">
-                <img src="/images/online-training.jpg" alt="Online Training" />
-                <h3>Online Training</h3>
-                <p>Access our extensive library of online courses from anywhere.</p>
-            </div>
-            <div class="card">
-                <img src="/images/hybrid-training.jpg" alt="Hybrid Training" />
-                <h3>Hybrid Training</h3>
-                <p>Combine in-person and online learning for maximum flexibility.</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Register Modal -->
-    <div v-if="showRegisterModal" class="modal-overlay">
-        <div class="modal">
-            <h3>Register for a Course</h3>
-            <form>
-                <div class="form-group">
-                    <label for="email">Email Address</label>
-                    <input type="email" id="email" placeholder="Enter your email" />
-                </div>
-                <div class="form-group">
-                    <label for="password">Password</label>
-                    <input type="password" id="password" placeholder="Enter your password" />
-                </div>
-                <button type="submit" class="btn-primary">Login</button>
-            </form>
-            <p>
-                <a href="#" @click.prevent="showRegistrationForm = true; showRegisterModal = false">Register if you don't have an account.</a>
-            </p>
-            <button class="close-btn" @click="showRegisterModal = false">Close</button>
-        </div>
-    </div>
-    <!-- Registration Form Modal -->
-    <RegistrationModal v-if="showRegistrationForm"
-                       @close="showRegistrationForm = false" />
 </template>
 
-<script>import LoginComponent from "@/components/LoginComponent.vue";
+<script>
+    import eventBus from "@/eventBus.js"; // ✅ Import eventBus
+    import LoginComponent from "@/components/LoginComponent.vue";
     import RegistrationModal from "@/components/RegistrationModal.vue";
+    import SideNav from "@/components/SideNav.vue";
 
     export default {
         name: "HomePage",
         components: {
             LoginComponent,
-            RegistrationModal // Registering the component
+            RegistrationModal,
+            SideNav,
         },
         data() {
             return {
                 userName: localStorage.getItem("userName") || null,
-                isUserLoggedIn: !!localStorage.getItem("jwtToken"), // ✅ Reactive Login State
+                isUserLoggedIn: !!localStorage.getItem("jwtToken"),
                 showLoginModal: false,
                 showRegisterModal: false,
+                isSideNavRendered: false, // ✅ Ensure SideNav only renders once
                 currentImageIndex: 0,
                 images: [
                     { src: "/images/img1.jpeg", alt: "Image 1" },
@@ -133,6 +77,7 @@
         },
         mounted() {
             this.startImageCarousel();
+            this.isSideNavRendered = true;
         },
         beforeUnmount() {
             clearInterval(this.carouselInterval);
@@ -140,26 +85,48 @@
         methods: {
             startImageCarousel() {
                 this.carouselInterval = setInterval(() => {
-                    this.currentImageIndex =
-                        (this.currentImageIndex + 1) % this.images.length;
+                    this.currentImageIndex = (this.currentImageIndex + 1) % this.images.length;
                 }, 3000);
             },
-            handleLoginSuccess(userName) {
-                this.userName = userName;
-                localStorage.setItem("userName", userName);
+            async handleLoginSuccess(userData) {
+                console.log("🔥 Full Login Response:", userData); // ✅ Log full response
+
+                if (!userData || !userData.userId) {
+                    alert("⚠️ Login successful, but user data is missing.");
+                    console.error("🚨 UserId is missing in response:", userData);
+                    return;
+                }
+
+                // ✅ Store Correct Data in localStorage
+                localStorage.setItem("userId", userData.userId);  // 🔥 Use userId instead of userSysID
+                localStorage.setItem("userName", userData.firstName + " " + userData.lastName);
+                localStorage.setItem("jwtToken", userData.token);
+
+                console.log("✅ Stored user details:", {
+                    userId: localStorage.getItem("userId"),
+                    userName: localStorage.getItem("userName"),
+                    jwtToken: localStorage.getItem("jwtToken"),
+                });
+
+                eventBus.emit("auth-change"); // ✅ Notify other components
+                this.reloadPage();
             },
             handleLogout() {
                 localStorage.removeItem("jwtToken");
                 localStorage.removeItem("userName");
-                this.userName = null;
+                this.reloadPage(); // ✅ Reload page to update UI
             },
             handleShowRegister() {
                 this.showRegistrationForm = true;
-                this.showLoginModal = false;  // ✅ Close login modal when opening registration
+                this.showLoginModal = false;
+            },
+            reloadPage() {
+                setTimeout(() => {
+                    window.location.reload(); // 🔄 Full page reload
+                }, 500);
             }
         },
     };</script>
-
 
 <style scoped>
     /* General Container */

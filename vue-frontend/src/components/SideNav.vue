@@ -7,15 +7,20 @@
 
         <!-- Side Navigation -->
         <nav :class="{ expanded: isExpanded, collapsed: !isExpanded }">
-            <!-- Profile Section -->
-            <div class="profile-section" v-show="isExpanded">
-                <div class="profile-header">
+            <!-- ✅ Profile Dropdown (Only for Logged-in Users) -->
+            <div class="profile-section" v-if="isUserLoggedIn">
+                <div class="profile-header" @click="toggleProfileDropdown">
                     <span class="icon">👤</span>
                     <span>My Profile</span>
+                    <span class="dropdown-arrow">▼</span>
                 </div>
-                <ul>
-                    <li><router-link to="/profile/view">View Profile</router-link></li>
-                    <li><router-link to="/profile/edit">Edit Profile</router-link></li>
+                <ul v-if="showProfileDropdown">
+                    <li>
+                        <a href="#" @click.prevent="navigateToProfile">View Profile</a>
+                    </li>
+                    <li>
+                        <a href="#" @click="handleLogout">Logout</a>
+                    </li>
                 </ul>
             </div>
 
@@ -87,23 +92,31 @@
                         <span v-show="isExpanded">Course Module</span>
                     </router-link>
                 </li>
-
             </ul>
         </nav>
     </div>
 </template>
 
-<script>export default {
+<script>import eventBus from "@/eventBus.js";
+
+    export default {
         name: "SideNav",
         data() {
             return {
                 isExpanded: true,
+                showProfileDropdown: false,
                 sections: {
                     courses: false,
                     myCourses: false,
                 },
-                isUserLoggedIn: !!localStorage.getItem("jwtToken"), // ✅ Check if user is logged in
+                isUserLoggedIn: !!localStorage.getItem("jwtToken"),
             };
+        },
+        mounted() {
+            eventBus.on("auth-change", this.refreshLoginState);
+        },
+        beforeUnmount() {
+            eventBus.off("auth-change", this.refreshLoginState);
         },
         methods: {
             toggleSidenav() {
@@ -112,18 +125,31 @@
             toggleSection(section) {
                 this.sections[section] = !this.sections[section];
             },
-            checkUserLogin() {
-                this.isUserLoggedIn = !!localStorage.getItem("jwtToken"); // ✅ Update login state
+            toggleProfileDropdown() {
+                this.showProfileDropdown = !this.showProfileDropdown;
+            },
+            navigateToProfile() {
+                const userId = localStorage.getItem("userId");
+                if (!userId) {
+                    alert("User ID not found. Please log in again.");
+                    return;
+                }
+                this.$router.push(`/profile/view/${userId}`);
+            },
+            handleLogout() {
+                localStorage.removeItem("jwtToken");
+                localStorage.removeItem("userName");
+                localStorage.removeItem("userId");
+                this.isUserLoggedIn = false;
+                this.$router.push("/home");
+                window.location.reload();
+            },
+            refreshLoginState() {
+                this.isUserLoggedIn = !!localStorage.getItem("jwtToken");
             },
         },
-        mounted() {
-            this.checkUserLogin();
-            window.addEventListener("storage", this.checkUserLogin); // ✅ Listen for login/logout updates
-        },
-        beforeUnmount() {
-            window.removeEventListener("storage", this.checkUserLogin);
-        },
     };</script>
+
 
 <style scoped>
     /* General Container */
