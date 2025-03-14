@@ -1,8 +1,11 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿using HIVTraining_Vue.Data;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System;
 using System.IdentityModel.Tokens.Jwt;
+using System.Linq;
 using System.Security.Claims;
 using System.Text;
 using System.Threading.Tasks;
@@ -13,11 +16,13 @@ namespace HIVTraining_Vue.Server.Controllers
     [Route("api/[controller]")]
     public class LoginController : ControllerBase
     {
+        private readonly ApplicationDbContext _context;
         private readonly UserManager<IdentityUser> _userManager;
         private readonly SignInManager<IdentityUser> _signInManager;
 
-        public LoginController(UserManager<IdentityUser> userManager, SignInManager<IdentityUser> signInManager)
+        public LoginController(UserManager<IdentityUser> userManager, SignInManager<IdentityUser> signInManager, ApplicationDbContext context)
         {
+            _context = context;
             _userManager = userManager;
             _signInManager = signInManager;
         }
@@ -26,23 +31,34 @@ namespace HIVTraining_Vue.Server.Controllers
         public async Task<IActionResult> Login([FromBody] LoginRequest model)
         {
             var user = await _userManager.FindByEmailAsync(model.Email);
-            if (user == null)
-            {
-                Console.WriteLine("Login failed: User not found.");
-                return Unauthorized(new { message = "Invalid email or password" });
-            }
 
-            // ✅ Check if password is correct
-            var isPasswordValid = await _userManager.CheckPasswordAsync(user, model.Password);
-            Console.WriteLine($"Password valid: {isPasswordValid}");
-
-            if (!isPasswordValid)
+            if (user == null || !await _userManager.CheckPasswordAsync(user, model.Password))
             {
                 return Unauthorized(new { message = "Invalid email or password" });
             }
 
+            // 🔹 Fetch user details from Users table (using Email)
+            var userDetails = await _context.Users
+                .Where(u => u.Email == model.Email)
+                .FirstOrDefaultAsync();
+
+            if (userDetails == null)
+            {
+                return Unauthorized(new { message = "User details not found" });
+            }
+
+            // 🔹 Generate JWT Token
             var token = GenerateJwtToken(user);
-            return Ok(new { token, userName = user.UserName });
+
+            // ✅ Return correct UserId (GUID) instead of UserSysID
+            return Ok(new
+            {
+                userId = userDetails.UserId.ToString(),  // 🔥 Return GUID as a string
+                firstName = userDetails.FirstName,
+                lastName = userDetails.LastName,
+                email = user.Email,
+                token = token
+            });
         }
 
         private string GenerateJwtToken(IdentityUser user)
