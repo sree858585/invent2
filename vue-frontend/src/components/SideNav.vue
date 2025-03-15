@@ -92,6 +92,14 @@
                         <span v-show="isExpanded">Course Module</span>
                     </router-link>
                 </li>
+
+                <li>
+                    <router-link to="/course-management">
+                        <span class="icon">⚙️</span>
+                        <span v-show="isExpanded">Course Management</span>
+                    </router-link>
+                </li>
+
             </ul>
         </nav>
     </div>

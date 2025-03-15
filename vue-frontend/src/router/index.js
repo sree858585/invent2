@@ -6,7 +6,9 @@ import CourseModule from "@/components/CourseModule.vue";
 import CourseListPage from "@/components/CourseListPage.vue";
 import PeerCertification from "@/components/PeerCertification.vue";
 import Trending from "@/components/Trending.vue";
-import ProfileComponent from "@/components/ProfileComponent.vue"; 
+import ProfileComponent from "@/components/ProfileComponent.vue";
+import CourseManagement from "@/components/CourseManagement.vue";
+
 
 const routes = [
     {
@@ -59,6 +61,11 @@ const routes = [
         path: "/course-module",
         name: "CourseModule",
         component: CourseModule
+    },
+    {
+        path: "/course-management",
+        name: "CourseManagement",
+        component: CourseManagement
     },
     {
         path: "/",
