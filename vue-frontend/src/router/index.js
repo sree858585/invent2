@@ -8,6 +8,10 @@ import PeerCertification from "@/components/PeerCertification.vue";
 import Trending from "@/components/Trending.vue";
 import ProfileComponent from "@/components/ProfileComponent.vue";
 import CourseManagement from "@/components/CourseManagement.vue";
+import TrainingTitle from "@/components/TrainingTitle.vue";
+import TrainingCenter from "@/components/TrainingCenter.vue";
+import InstructorManagement from "@/components/InstructorManagement.vue";
+import CourseListManager from "@/components/CourseListManager.vue";
 
 
 const routes = [
@@ -66,6 +70,26 @@ const routes = [
         path: "/course-management",
         name: "CourseManagement",
         component: CourseManagement
+    },
+    {
+        path: "/system/training-title",
+        name: "TrainingTitle",
+        component: TrainingTitle
+    },
+    {
+        path: "/system/training-center",
+        name: "TrainingCenter",
+        component: TrainingCenter
+    },
+    {
+        path: "/system/instructor-management",
+        name: "InstructorManagement",
+        component: InstructorManagement
+    },
+    {
+        path: "/system/course-list",
+        name: "CourseListManager",
+        component: CourseListManager
     },
     {
         path: "/",

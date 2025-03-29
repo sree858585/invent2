@@ -1,33 +1,81 @@
 <template>
     <div id="app">
-        <!-- Header should be at the top, aligned to the left -->
+        <!-- Header -->
         <SiteHeader />
 
+        <!-- Layout container -->
         <div class="main-container">
-            <SideNav /> <!-- Sidebar on the left -->
+            <!-- Sidebar -->
+            <SideNav @show-login="showLoginModal = true" />
 
+            <!-- Main content -->
             <div class="content">
-                <router-view /> <!-- Page content -->
+                <router-view />
             </div>
         </div>
 
-        <!-- Footer should be at the bottom, spanning full width -->
-        <SiteFooter />
+        <!-- Login Modal -->
+        <LoginComponent v-if="showLoginModal"
+                        @login-success="handleLoginSuccess"
+                        @show-register="handleShowRegister"
+                        @close="showLoginModal = false" />
+
+        <!-- Registration Modal (optional) -->
+        <RegistrationModal v-if="showRegistrationForm"
+                           @close="showRegistrationForm = false" />
     </div>
 </template>
 
 <script>import SideNav from "@/components/SideNav.vue";
-    import SiteHeader from "@/components/Header.vue";
-    import SiteFooter from "@/components/Footer.vue";
+import SiteHeader from "@/components/Header.vue";
+import LoginComponent from "@/components/LoginComponent.vue";
+import RegistrationModal from "@/components/RegistrationModal.vue";
+import eventBus from "@/eventBus.js";
 
-    export default {
-        name: "App",
-        components: {
-            SideNav,
-            SiteHeader,
-            SiteFooter,
-        },
-    };</script>
+export default {
+  name: "App",
+  components: {
+    SideNav,
+    SiteHeader,
+    LoginComponent,
+    RegistrationModal,
+  },
+  data() {
+    return {
+      showLoginModal: false,
+      showRegistrationForm: false,
+    };
+  },
+  created() {
+    eventBus.on("auth-change", this.refreshState);
+  },
+  unmounted() {
+    eventBus.off("auth-change", this.refreshState);
+  },
+  methods: {
+    handleLoginSuccess(userData) {
+      if (!userData || !userData.userId) {
+        alert("⚠️ Login response is invalid.");
+        return;
+      }
+
+      // Store login info
+      localStorage.setItem("userId", userData.userId);
+      localStorage.setItem("userName", `${userData.firstName} ${userData.lastName}`);
+      localStorage.setItem("jwtToken", userData.token);
+
+      this.showLoginModal = false;
+      eventBus.emit("auth-change");
+    },
+    handleShowRegister() {
+      this.showRegistrationForm = true;
+      this.showLoginModal = false;
+    },
+    refreshState() {
+      this.$forceUpdate(); // Force SideNav to update based on login state
+    },
+  },
+};</script>
 
 <style>
     /* Overall app layout */

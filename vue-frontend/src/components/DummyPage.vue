@@ -1,27 +1,22 @@
 ﻿<template>
     <div class="home-page-container">
-        <!-- ✅ Ensure SideNav is only rendered once -->
-        <template v-if="!isSideNavRendered">
-            <SideNav :isUserLoggedIn="isUserLoggedIn" />
-        </template>
+        
 
         <!-- Header Section -->
         <div class="header-section">
-            <h1 v-if="!userName">Welcome to the Online Registration System for NYS AIDS Institute Training Centers</h1>
+            <h1 v-if="!userName">
+                Welcome to the Online Registration System for NYS AIDS Institute Training Centers
+            </h1>
             <h1 v-else>Hello, {{ userName }}</h1>
             <p><strong>Please Note:</strong> The preferred web browser for using this site is Google Chrome.</p>
         </div>
 
-        <!-- Animated Image Carousel -->
+        <!-- Image Carousel -->
         <div class="image-carousel">
             <img :src="images[currentImageIndex].src"
                  :alt="images[currentImageIndex].alt"
                  class="carousel-image" />
         </div>
-
-        <!-- Login / Logout Buttons -->
-        <button v-if="!userName" class="register-btn" @click="showLoginModal = true">Login</button>
-        <button v-if="userName" class="register-btn logout-btn" @click="handleLogout">Logout</button>
 
         <!-- Modals -->
         <LoginComponent v-if="showLoginModal"
@@ -32,7 +27,7 @@
         <RegistrationModal v-if="showRegistrationForm"
                            @close="showRegistrationForm = false" />
 
-        <!-- Important Information Section -->
+        <!-- Info Section -->
         <div class="important-info-section">
             <h2>Important Course Registration Information:</h2>
             <p>
@@ -45,26 +40,22 @@
     </div>
 </template>
 
-<script>
-    import eventBus from "@/eventBus.js"; // ✅ Import eventBus
+<script>import eventBus from "@/eventBus.js";
     import LoginComponent from "@/components/LoginComponent.vue";
     import RegistrationModal from "@/components/RegistrationModal.vue";
-    import SideNav from "@/components/SideNav.vue";
 
     export default {
         name: "HomePage",
         components: {
             LoginComponent,
             RegistrationModal,
-            SideNav,
         },
         data() {
             return {
                 userName: localStorage.getItem("userName") || null,
                 isUserLoggedIn: !!localStorage.getItem("jwtToken"),
                 showLoginModal: false,
-                showRegisterModal: false,
-                isSideNavRendered: false, // ✅ Ensure SideNav only renders once
+                showRegistrationForm: false,
                 currentImageIndex: 0,
                 images: [
                     { src: "/images/img1.jpeg", alt: "Image 1" },
@@ -77,10 +68,11 @@
         },
         mounted() {
             this.startImageCarousel();
-            this.isSideNavRendered = true;
+            eventBus.on("auth-change", this.updateLoginState);
         },
         beforeUnmount() {
             clearInterval(this.carouselInterval);
+            eventBus.off("auth-change", this.updateLoginState);
         },
         methods: {
             startImageCarousel() {
@@ -88,33 +80,29 @@
                     this.currentImageIndex = (this.currentImageIndex + 1) % this.images.length;
                 }, 3000);
             },
-            async handleLoginSuccess(userData) {
-                console.log("🔥 Full Login Response:", userData); // ✅ Log full response
-
+            updateLoginState() {
+                this.userName = localStorage.getItem("userName");
+                this.isUserLoggedIn = !!localStorage.getItem("jwtToken");
+            },
+            handleLoginSuccess(userData) {
                 if (!userData || !userData.userId) {
                     alert("⚠️ Login successful, but user data is missing.");
                     console.error("🚨 UserId is missing in response:", userData);
                     return;
                 }
 
-                // ✅ Store Correct Data in localStorage
-                localStorage.setItem("userId", userData.userId);  // 🔥 Use userId instead of userSysID
-                localStorage.setItem("userName", userData.firstName + " " + userData.lastName);
+                localStorage.setItem("userId", userData.userId);
+                localStorage.setItem("userName", `${userData.firstName} ${userData.lastName}`);
                 localStorage.setItem("jwtToken", userData.token);
 
-                console.log("✅ Stored user details:", {
-                    userId: localStorage.getItem("userId"),
-                    userName: localStorage.getItem("userName"),
-                    jwtToken: localStorage.getItem("jwtToken"),
-                });
-
-                eventBus.emit("auth-change"); // ✅ Notify other components
+                eventBus.emit("auth-change");
                 this.reloadPage();
             },
             handleLogout() {
                 localStorage.removeItem("jwtToken");
                 localStorage.removeItem("userName");
-                this.reloadPage(); // ✅ Reload page to update UI
+                localStorage.removeItem("userId");
+                this.reloadPage();
             },
             handleShowRegister() {
                 this.showRegistrationForm = true;
@@ -122,9 +110,9 @@
             },
             reloadPage() {
                 setTimeout(() => {
-                    window.location.reload(); // 🔄 Full page reload
+                    window.location.reload();
                 }, 500);
-            }
+            },
         },
     };</script>
 

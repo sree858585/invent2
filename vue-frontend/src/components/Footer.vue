@@ -1,4 +1,4 @@
-﻿<template>
+﻿<!--<template>
     <footer class="site-footer">
         <div class="footer-content">
             <nav>
@@ -62,4 +62,4 @@
                 nav ul li a:hover {
                     text-decoration: underline;
                 }
-</style>
+</style>-->
