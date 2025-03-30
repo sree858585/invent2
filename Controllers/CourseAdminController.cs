@@ -45,16 +45,28 @@ namespace HIVTraining_Vue.Server.Controllers
                             select new
                             {
                                 c.CourseSysId,
-                                c.CourseDate,
-                                c.EndDate,
-                                c.City,
-                                c.TrainingLocation,
-                                c.Delivered,
-                                c.Approve,
+                                c.SubjectSysId,
                                 c.SiteSysId,
                                 c.Region,
                                 c.Format,
                                 c.ContractType,
+                                c.Instructor1,
+                                c.Instructor2,
+                                c.RegDeadLine,
+                                c.MaxSeats,
+                                c.CourseDate,
+                                c.EndDate,
+                                c.CourseTimeBegin,
+                                c.CourseTimeEnd,
+                                c.TrainingLocation,
+                                c.Deliverable,
+                                c.Information,
+                                c.Rtc,
+                                c.Coe,
+                                c.OtherFund,
+                                c.Hidden,
+                                c.Delivered,
+                                c.Approve,
                                 SubjectTitle = subj != null ? subj.CourseTitle : "N/A",
                                 SiteName = s != null ? s.SiteName : "N/A"
                             };
@@ -97,6 +109,37 @@ namespace HIVTraining_Vue.Server.Controllers
             {
                 return StatusCode(500, $"Internal server error: {ex.Message}");
             }
+        }
+        [HttpPut("update/{id}")]
+        public async Task<IActionResult> UpdateCourse(int id, [FromBody] Course updatedCourse)
+        {
+            var course = await _context.Courses.FindAsync(id);
+            if (course == null) return NotFound();
+
+            // Update the fields
+            course.SiteSysId = updatedCourse.SiteSysId;
+            course.Region = updatedCourse.Region;
+            course.SubjectSysId = updatedCourse.SubjectSysId;
+            course.Instructor1 = updatedCourse.Instructor1;
+            course.Instructor2 = updatedCourse.Instructor2;
+            course.CourseDate = updatedCourse.CourseDate;
+            course.EndDate = updatedCourse.EndDate;
+            course.CourseTimeBegin = updatedCourse.CourseTimeBegin;
+            course.CourseTimeEnd = updatedCourse.CourseTimeEnd;
+            course.RegDeadLine = updatedCourse.RegDeadLine;
+            course.MaxSeats = updatedCourse.MaxSeats;
+            course.TrainingLocation = updatedCourse.TrainingLocation;
+            course.Deliverable = updatedCourse.Deliverable;
+            course.Format = updatedCourse.Format;
+            course.Rtc = updatedCourse.Rtc;
+            course.Coe = updatedCourse.Coe;
+            course.OtherFund = updatedCourse.OtherFund;
+            course.Hidden = updatedCourse.Hidden;
+            course.Information = updatedCourse.Information;
+            course.DateModified = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+            return NoContent();
         }
 
         [HttpPut("updateDelivered/{id}")]

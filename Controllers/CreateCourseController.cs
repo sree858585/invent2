@@ -40,9 +40,14 @@ namespace HIVTraining_Vue.Server.Controllers
                 .ToListAsync();
 
             var subjects = await _context.Subjects
-                .Where(s => s.Active)
-                .Select(s => new { s.SubjectSysId, s.CourseTitle })
-                .ToListAsync();
+        .Where(s => s.Active)
+        .Select(s => new
+        {
+            s.SubjectSysId,
+            s.CourseTitle,
+            s.Category  // <-- this is the fix
+        })
+        .ToListAsync();
 
             var instructors = await _context.Instructors
                 .Where(i => i.Active == true)
@@ -67,6 +72,16 @@ namespace HIVTraining_Vue.Server.Controllers
                 Deliverables = deliverables,
                 Formats = formats
             });
+        }
+        [HttpGet("subjectsByCategory/{categoryCode}")]
+        public async Task<IActionResult> GetSubjectsByCategory(int categoryCode)
+        {
+            var subjects = await _context.Subjects
+                .Where(s => s.Active && s.Category == categoryCode)
+                .Select(s => new { s.SubjectSysId, s.CourseTitle })
+                .ToListAsync();
+
+            return Ok(subjects);
         }
 
         /// <summary>
