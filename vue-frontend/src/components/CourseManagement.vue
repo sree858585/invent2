@@ -70,14 +70,12 @@
                         </td>
                         <td>
                             <div class="dropdown">
-                                <button class="dropdown-toggle">⚙️ Manage</button>
-                                <div class="dropdown-menu">
-                                    <a @click.prevent href="#">✏️ Edit</a>
-                                    <a @click.prevent href="#">👥 Add User</a>
-                                    <a @click.prevent href="#">🚫 Cancel</a>
-                                    <a @click.prevent href="#">📤 Drop User</a>
-                                    <a @click.prevent href="#">📧 Email</a>
-                                </div>
+                                <button class="dropdown-toggle"
+                                        @click.stop="toggleDropdown(course.courseSysId, $event)">
+                                    ⚙️ Manage
+                                </button>
+
+
                             </div>
                         </td>
                         <td>
@@ -89,6 +87,16 @@
                     </tr>
                 </tbody>
             </table>
+            <div v-if="activeDropdownCourseId !== null"
+                 class="dropdown-menu-portal"
+                 :style="dropdownStyle"
+                 @click.stop>
+                <a @click.prevent="openModal('edit', getCourseById(activeDropdownCourseId))">✏️ Edit</a>
+                <a @click.prevent="openModal('addUser', getCourseById(activeDropdownCourseId))">👥 Add User</a>
+                <a @click.prevent="openModal('cancel', getCourseById(activeDropdownCourseId))">🚫 Cancel</a>
+                <a @click.prevent="openModal('dropUser', getCourseById(activeDropdownCourseId))">📤 Drop User</a>
+                <a @click.prevent="openModal('email', getCourseById(activeDropdownCourseId))">📧 Email</a>
+            </div>
             <!-- ⏩ Pagination -->
             <div class="pagination" v-if="totalPages > 1">
                 <button @click="changePage(currentPage - 1)" :disabled="currentPage === 1">⏮ Prev</button>
@@ -100,7 +108,7 @@
         <p v-else class="no-data">No courses found.</p>
 
         <!-- Detail Modal -->
-        <div class="modal-overlay" v-if="selectedCourse">
+        <div class="modal-overlay" v-if="selectedCourse && !modalType">
             <div class="modal">
                 <h3>📘 View Course Details</h3>
                 <p><strong>Course Title:</strong> {{ selectedCourse.subjectTitle }}</p>
@@ -113,19 +121,39 @@
             </div>
         </div>
     </div>
+    <EditCourseModal v-if="modalType === 'edit'"
+                     :course="modalCourse"
+                     @close="closeModal"
+                     @updated="handleCourseUpdated" />
+    <AddUserModal v-if="modalType === 'addUser'" :course="modalCourse" @close="closeModal" />
+    <CancelCourseModal v-if="modalType === 'cancel'" :course="modalCourse" @close="closeModal" />
+    <DropUserModal v-if="modalType === 'dropUser'" :course="modalCourse" @close="closeModal" />
+    <EmailUserModal v-if="modalType === 'email'" :course="modalCourse" @close="closeModal" />
 </template>
 
 <script>import apiClient from "@/axios.js";
     import ScheduleCourseModal from "@/components/ScheduleCourseModal.vue";
+    import EditCourseModal from "@/components/Modals/EditCourseModal.vue";
+    import AddUserModal from "@/components/Modals/AddUserModal.vue";
+    import CancelCourseModal from "@/components/Modals/CancelCourseModal.vue";
+    import DropUserModal from "@/components/Modals/DropUserModal.vue";
+    import EmailUserModal from "@/components/Modals/EmailUsersModal.vue";
 
 
     export default {
         name: "CourseManagement",
-        components: { ScheduleCourseModal },
+        components: {
+            ScheduleCourseModal,
+            EditCourseModal,
+            AddUserModal,
+            CancelCourseModal,
+            DropUserModal,
+            EmailUserModal },
         data() {
             return {
                 isModalOpen: false,
                 selectedCourse: null,
+                modalType: null,
                 courses: [],
                 totalCourses: 0,
                 currentPage: 1,
@@ -140,17 +168,38 @@
                     fromDate: "",
                     toDate: ""
                 },
+                dropdownStyle: {
+                    top: 0,
+                    left: 0,
+                    display: 'none'
+                },
+                activeDropdownCourseId: null,
 
                 regions: [],
                 formats: [],
                 sites: [],
-                categories: []
+                categories: [],
+                dropdownOpen: null,
+                dropdownDirection: {}
             };
         },
         
         mounted() {
+            window.addEventListener("click", this.handleClickOutside);
             this.fetchCourses();
             this.loadDropdowns();
+        },
+        beforeUnmount() {
+            window.removeEventListener("click", this.handleClickOutside);
+        },
+        closeDropdown(event) {
+            const isClickInsideDropdown = event.target.closest('.dropdown-menu-portal');
+            const isClickOnToggle = event.target.closest('.dropdown-toggle');
+
+            if (!isClickInsideDropdown && !isClickOnToggle) {
+                this.activeDropdownCourseId = null;
+                this.dropdownStyle.display = 'none';
+            }
         },
         computed: {
             totalPages() {
@@ -158,6 +207,52 @@
             }
         },
         methods: {
+            handleCourseUpdated() {
+  this.fetchCourses(); 
+},
+            handleClickOutside(event) {
+                const dropdown = document.querySelector(".dropdown-menu-portal");
+                const toggleButtons = document.querySelectorAll(".dropdown-toggle");
+
+                const clickedInsideDropdown = dropdown?.contains(event.target);
+                const clickedToggle = Array.from(toggleButtons).some(btn => btn.contains(event.target));
+
+                if (!clickedInsideDropdown && !clickedToggle) {
+                    this.activeDropdownCourseId = null;
+                    this.dropdownStyle.display = "none";
+                }
+            },
+            getCourseById(courseId) {
+                return this.courses.find(c => c.courseSysId === courseId);
+            },
+            
+            isNearBottom(event) {
+                const button = event.target.closest('.dropdown');
+                const rect = button.getBoundingClientRect();
+                return rect.bottom + 160 > window.innerHeight;
+            },
+            toggleDropdown(courseId, event) {
+                if (this.activeDropdownCourseId === courseId) {
+                    this.activeDropdownCourseId = null;
+                    this.dropdownStyle.display = 'none';
+                    return;
+                }
+
+                const button = event.currentTarget;
+                const rect = button.getBoundingClientRect();
+
+                const dropdownHeight = 160; // or dynamically calculated
+                const spaceBelow = window.innerHeight - rect.bottom;
+                const shouldDropUp = spaceBelow < dropdownHeight;
+
+                this.dropdownStyle = {
+                    top: `${shouldDropUp ? rect.top - dropdownHeight : rect.bottom}px`,
+                    left: `${rect.left}px`,
+                    display: 'block'
+                };
+
+                this.activeDropdownCourseId = courseId;
+            },
             resetFilters() {
                 this.filters = {
                     title: "",
@@ -230,6 +325,16 @@
             },
             handleNewCourse(courseData) {
                 console.log("New Course Scheduled:", courseData);
+            },
+            openModal(type, course) {
+                this.modalType = type;
+                this.modalCourse = course;
+                this.selectedCourse = null;
+                this.dropdownOpen = null;
+            },
+            closeModal() {
+                this.modalType = null;
+                this.modalCourse = null;
             },
             async updateDelivered(course) {
                 try {
@@ -375,8 +480,9 @@
         }
 
     .table-wrapper {
-        overflow-x: auto;
-        margin-top: 10px;
+        overflow: visible !important;
+        position: relative;
+        z-index: 0;
     }
 
     .modern-table {
@@ -441,10 +547,6 @@
         box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
         z-index: 1000;
         margin-top: 4px;
-    }
-
-    .dropdown:hover .dropdown-menu {
-        display: block;
     }
 
     .dropdown-menu a {
@@ -564,4 +666,79 @@
         .toggle-switch input:checked + .slider:before {
             transform: translateX(24px);
         }
+    .dropdown {
+        position: relative;
+        display: inline-block;
+    }
+
+    .dropdown-toggle {
+        background-color: #f1f1f1;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 14px;
+        cursor: pointer;
+    }
+
+    .dropdown-menu {
+        position: absolute;
+        background-color: white;
+        min-width: 160px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+        z-index: 2000;
+        left: 0;
+        display: block;
+    }
+
+        .dropdown-menu.drop-up {
+            bottom: 100%;
+            margin-bottom: 4px;
+        }
+
+        .dropdown-menu:not(.drop-up) {
+            top: 100%;
+            margin-top: 4px;
+        }
+
+        .dropdown-menu.drop-up {
+            top: auto;
+            bottom: 100%;
+            margin-top: 0;
+            margin-bottom: 4px;
+        }
+
+        .dropdown-menu a {
+            padding: 10px 12px;
+            display: block;
+            text-decoration: none;
+            color: #333;
+            font-size: 14px;
+        }
+
+            .dropdown-menu a:hover {
+                background-color: #f2f2f2;
+            }
+    .dropdown-menu-portal {
+        position: fixed;
+        background-color: white;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+        z-index: 9999;
+        min-width: 160px;
+    }
+
+        .dropdown-menu-portal a {
+            display: block;
+            padding: 10px 12px;
+            font-size: 14px;
+            color: #333;
+            text-decoration: none;
+        }
+
+            .dropdown-menu-portal a:hover {
+                background-color: #f2f2f2;
+            }
 </style>

@@ -184,219 +184,181 @@
     };</script>
 
 <style scoped>
-
-        /* General Container */
-          .sidenav-container {
-                display: flex;
-                height: 100vh;
-
-        }
-
-        /* Hamburger Button */
-          .hamburger-button {
-                position: absolute;
-                top: 10px;
-                right: 10px;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                width: 40px;
-                height: 40px;
-                background-color: #ffffff;
-                color: #6e528d;
-                font-size: 20px;
-                cursor: pointer;
-                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
-                border-radius: 50%;
-                z-index: 1000;
-
-        }
-        /* Side Navigation */
-          nav {
-                width: 280px;
-                background: #6e528d;
-                color: white;
-                overflow-y: auto;
-                transition: width 0.3s ease-in-out;
-                border-radius: 10px;
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-                position: relative;
-        }
-            nav.collapsed {
-                  width: 60px;
-        }
-        /* Profile Section */
-          .profile-section {
-                padding: 15px;
-                border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-                background-color: rgba(255, 255, 255, 0.1);
-                border-radius: 8px;
-
-        }
-          .profile-header {
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                font-weight: bold;
-                font-size: 18px; /* Slightly larger font */
-                color: #ffffff; /* Keep header text white */
-                cursor: pointer; /* Change cursor on hover */
-                transition: background 0.3s ease; /* Smooth hover effect */
-                padding: 10px; /* Add some padding */
-                border-radius: 5px; /* Rounded corners */
-
-        }
-            .profile-header:hover {
-                  background-color: rgba(255, 255, 255, 0.2); /* Background change on hover */
-
-        }
-    .dropdown-arrow.rotated {
-        transform: rotate(180deg);
+    /* ===== Container ===== */
+    .sidenav-container {
+        display: flex;
+        height: 100vh;
+        background: #f4f6f9;
     }
-    .dropdown-arrow {
-        transition: transform 0.3s ease;
-    }
-          .profile-header:hover .dropdown-arrow {
-                transform: rotate(180deg); /* Rotate arrow when hovered */
 
+    /* ===== Hamburger Toggle ===== */
+    .hamburger-button {
+        position: fixed; /* fixed to the viewport */
+        top: 16px;
+        left: 16px;
+        z-index: 1100;
+        width: 42px;
+        height: 42px;
+        background-color: #ffffff;
+        color: #6e528d;
+        font-size: 22px;
+        border-radius: 50%;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        cursor: pointer;
+    }
+
+    /* ===== Sidebar Core ===== */
+    nav {
+        width: 260px;
+        background: #6e528d;
+        color: #ffffff;
+        overflow-y: auto;
+        transition: width 0.3s ease, margin-left 0.3s ease;
+        box-shadow: 2px 0 10px rgba(0, 0, 0, 0.15);
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        border-radius: 10px;
+    }
+
+        nav.collapsed {
+            width: 70px;
         }
-    .dropdown-header {
+
+    /* ===== Profile Section ===== */
+    .profile-section {
+        padding: 16px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .profile-header,
+    .login-btn {
         display: flex;
         align-items: center;
-        gap: 10px;
-        padding: 10px 15px;
+        gap: 12px;
         font-size: 16px;
-        font-weight: normal;
-        color: white;
+        font-weight: 500;
+        color: #ffffff;
+        padding: 12px;
+        border-radius: 8px;
         cursor: pointer;
-        transition: background-color 0.3s ease;
-        border-radius: 5px;
-        width: 100%;
-        box-sizing: border-box;
+        transition: background 0.2s ease;
     }
-        .dropdown-header span {
-            display: flex;
-            align-items: center;
+
+        .profile-header:hover,
+        .login-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
         }
 
-        .dropdown-header .dropdown-arrow {
-            margin-left: auto;
+    .profile-section ul {
+        margin-top: 10px;
+        padding-left: 12px;
+        list-style: none;
+    }
+
+    .profile-section li {
+        padding: 6px 0;
+        font-size: 14px;
+        color: #e0e0e0;
+        cursor: pointer;
+    }
+
+        .profile-section li:hover {
+            color: #ffffff;
         }
-        .dropdown-header:hover {
-            background-color: rgba(255, 255, 255, 0.2);
+
+    /* ===== Navigation Items ===== */
+    .nav-items {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        flex-grow: 1;
+    }
+
+        .nav-items li {
+            margin-bottom: 4px;
         }
+
+        .nav-items a,
+        .dropdown-header {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 12px 20px;
+            color: #ffffff;
+            font-size: 15px;
+            border-radius: 8px;
+            text-decoration: none;
+            transition: background 0.2s ease;
+        }
+
+            .nav-items a:hover,
+            .dropdown-header:hover {
+                background-color: rgba(255, 255, 255, 0.15);
+            }
+
+    .icon {
+        font-size: 18px;
+    }
+
+    /* ===== Dropdown Sections ===== */
+    .dropdown-header {
+        cursor: pointer;
+        font-weight: 500;
+    }
+
+    .dropdown-arrow {
+        margin-left: auto;
+        transition: transform 0.3s ease;
+    }
+
+        .dropdown-arrow.rotated {
+            transform: rotate(180deg);
+        }
+
     .dropdown-menu {
         list-style: none;
-        margin: 0;
-        padding: 8px 0;
-        margin-left: 35px; /* Indent under parent */
-        background-color: rgba(255, 255, 255, 0.1);
-        border-left: 2px solid rgba(255, 255, 255, 0.2);
-        border-radius: 6px;
-        transition: all 0.3s ease;
+        padding-left: 32px;
+        margin: 6px 0 12px;
     }
 
         .dropdown-menu li {
-            padding: 8px 12px;
-            font-size: 15px;
-            color: white;
-            border-radius: 4px;
-            margin: 2px 0;
-            transition: background-color 0.2s ease;
+            margin: 4px 0;
         }
-
-            .dropdown-menu li:hover {
-                background-color: rgba(255, 255, 255, 0.2);
-            }
 
             .dropdown-menu li a {
-                color: white;
+                font-size: 14px;
+                color: #e0e0e0;
                 text-decoration: none;
                 display: block;
-                width: 100%;
+                padding: 6px 0;
+                transition: color 0.2s ease;
             }
-        /* Dropdown Menu */
-          .profile-section ul {
-                background-color: rgba(255, 255, 255, 0.1); /* Semi-transparent background */
-                border-radius: 5px;
-                list-style: none;
-                padding: 10px 0;
-                margin: 0;
 
-        }
-          .profile-section li {
-                padding: 8px 15px;
-                transition: background 0.2s; /* Smooth background change */
-                cursor: pointer; /* Pointer cursor for dropdown items */
-        }
-            .profile-section li:hover {
-                  background-color: rgba(255, 255, 255, 0.2); /* Light background on hover */
+                .dropdown-menu li a:hover {
+                    color: #ffffff;
+                }
 
-        }
-        /* Navigation Items */
-          .nav-items {
-                list-style-type: none;
-                padding: 0;
-                margin: 0;
-        }
-            .nav-items li {
-                display: flex;
-                align-items: center;
-                padding: 0;
-                margin-bottom: 5px;
-            }
-              .nav-items li:hover {
-                    background-color: rgba(255, 255, 255, 0.2);
-
-        }
-           .nav-items a {
-                  display: flex;
-                  align-items: center;
-                  gap: 10px;
-                  text-decoration: none;
-                  color: white;
-                  width: 100%;
-                  font-size: 16px;
-
-        }
-          .icon {
-                font-size: 20px;
-
-        }
+    /* ===== Login Button ===== */
     .login-btn {
-        background-color: rgba(255, 255, 255, 0.15);
-        color: white;
-        border: none;
-        padding: 10px 15px;
+        background-color: rgba(255, 255, 255, 0.08);
+        font-size: 15px;
+        font-weight: 500;
         width: 100%;
         text-align: left;
-        font-size: 16px;
-        font-weight: bold;
-        border-radius: 5px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 10px;
+        border: none;
     }
 
-        .login-btn:hover {
-            background-color: rgba(255, 255, 255, 0.25);
+    /* ===== Responsive Behavior ===== */
+    @media (max-width: 768px) {
+        nav {
+            position: absolute;
+            z-index: 1000;
+            height: 100%;
         }
-
-
-
-
-        /* Expandable Sections */
-          .expandable {
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                cursor: pointer;
-
-        }
-         ul ul {
-                padding-left: 20px;
-                list-style: none;
-
-        }
+    }
 </style>
