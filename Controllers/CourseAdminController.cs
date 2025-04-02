@@ -6,6 +6,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using HIVTraining_Vue.Server.Models;
+using HIVTraining_Vue.Server.Requests;
 
 namespace HIVTraining_Vue.Server.Controllers
 {
@@ -110,36 +111,78 @@ namespace HIVTraining_Vue.Server.Controllers
                 return StatusCode(500, $"Internal server error: {ex.Message}");
             }
         }
-        [HttpPut("update/{id}")]
-        public async Task<IActionResult> UpdateCourse(int id, [FromBody] Course updatedCourse)
+        [HttpGet("courseWithSessions/{id}")]
+        public async Task<IActionResult> GetCourseWithSessions(int id)
         {
-            var course = await _context.Courses.FindAsync(id);
+            var course = await _context.Courses
+                .Include(c => c.Subject)
+                .Include(c => c.Sessions) // 👈 Navigation now works
+                .FirstOrDefaultAsync(c => c.CourseSysId == id);
+
             if (course == null) return NotFound();
 
-            // Update the fields
-            course.SiteSysId = updatedCourse.SiteSysId;
-            course.Region = updatedCourse.Region;
-            course.SubjectSysId = updatedCourse.SubjectSysId;
-            course.Instructor1 = updatedCourse.Instructor1;
-            course.Instructor2 = updatedCourse.Instructor2;
-            course.CourseDate = updatedCourse.CourseDate;
-            course.EndDate = updatedCourse.EndDate;
-            course.CourseTimeBegin = updatedCourse.CourseTimeBegin;
-            course.CourseTimeEnd = updatedCourse.CourseTimeEnd;
-            course.RegDeadLine = updatedCourse.RegDeadLine;
-            course.MaxSeats = updatedCourse.MaxSeats;
-            course.TrainingLocation = updatedCourse.TrainingLocation;
-            course.Deliverable = updatedCourse.Deliverable;
-            course.Format = updatedCourse.Format;
-            course.Rtc = updatedCourse.Rtc;
-            course.Coe = updatedCourse.Coe;
-            course.OtherFund = updatedCourse.OtherFund;
-            course.Hidden = updatedCourse.Hidden;
-            course.Information = updatedCourse.Information;
-            course.DateModified = DateTime.UtcNow;
+            return Ok(course); // 👈 Directly return full course with sessions
+        }
+
+        [HttpPut("update/{id}")]
+        public async Task<IActionResult> UpdateCourse(int id, [FromBody] CourseScheduleRequest request)
+        {
+            if (request == null || request.Course == null)
+                return BadRequest("Course data is required.");
+
+            var existingCourse = await _context.Courses.FindAsync(id);
+            if (existingCourse == null) return NotFound();
+
+            var updated = request.Course;
+
+            // Update main course fields
+            existingCourse.SiteSysId = updated.SiteSysId;
+            existingCourse.SubjectSysId = updated.SubjectSysId;
+            existingCourse.Region = updated.Region;
+            existingCourse.Instructor1 = updated.Instructor1;
+            existingCourse.Instructor2 = updated.Instructor2;
+            existingCourse.CourseDate = updated.CourseDate;
+            existingCourse.EndDate = updated.EndDate;
+            existingCourse.CourseTimeBegin = updated.CourseTimeBegin;
+            existingCourse.CourseTimeEnd = updated.CourseTimeEnd;
+            existingCourse.RegDeadLine = updated.RegDeadLine;
+            existingCourse.MaxSeats = updated.MaxSeats;
+            existingCourse.TrainingLocation = updated.TrainingLocation;
+            existingCourse.Deliverable = updated.Deliverable;
+            existingCourse.Format = updated.Format;
+            existingCourse.Rtc = updated.Rtc;
+            existingCourse.Coe = updated.Coe;
+            existingCourse.OtherFund = updated.OtherFund;
+            existingCourse.Hidden = updated.Hidden;
+            existingCourse.Information = updated.Information;
+            existingCourse.IsMultiSession = updated.IsMultiSession;
+            existingCourse.DateModified = DateTime.UtcNow;
+
+            // Clear existing sessions
+            var existingSessions = await _context.CourseSessions
+                .Where(s => s.CourseSysId == id)
+                .ToListAsync();
+
+            _context.CourseSessions.RemoveRange(existingSessions);
+
+            // Add new sessions if applicable
+            if (updated.IsMultiSession && request.Sessions != null && request.Sessions.Any())
+            {
+                var newSessions = request.Sessions.Select(s => new CourseSession
+                {
+                    CourseSysId = id,
+                    SessionDate = s.SessionDate,
+                    StartTime = TimeSpan.Parse(s.StartTime),
+                    EndTime = TimeSpan.Parse(s.EndTime),
+                    SessionUrl = s.SessionUrl
+                }).ToList();
+
+                _context.CourseSessions.AddRange(newSessions);
+            }
 
             await _context.SaveChangesAsync();
-            return NoContent();
+
+            return Ok(new { message = "Course updated successfully!" });
         }
 
         [HttpPut("updateDelivered/{id}")]

@@ -3,9 +3,11 @@ using System.Collections.Generic;
 
 namespace HIVTraining_Vue.Server.Models;
 
-public partial class CourseListing
+public partial class CourseList
 {
     public int ListId { get; set; }
+
+    public int CourseListSysId { get; set; }
 
     public int SortKey { get; set; }
 
@@ -17,5 +19,5 @@ public partial class CourseListing
 
     public bool Highlight { get; set; }
 
-    public int SubjectSysId { get; set; }
+    public int? SubjectSysId { get; set; }
 }

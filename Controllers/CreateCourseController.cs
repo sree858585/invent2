@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using HIVTraining_Vue.Server.Requests;
 
 namespace HIVTraining_Vue.Server.Controllers
 {
@@ -88,24 +89,32 @@ namespace HIVTraining_Vue.Server.Controllers
         /// Schedule a new course
         /// </summary>
         [HttpPost("schedule")]
-        public async Task<IActionResult> ScheduleCourse([FromBody] Course course)
+        public async Task<IActionResult> ScheduleCourse([FromBody] CourseScheduleRequest request)
         {
-            if (course == null)
-            {
-                return BadRequest("Invalid course data.");
-            }
+            if (request?.Course == null)
+                return BadRequest("Course data is required.");
 
+            var course = request.Course;
             course.DateEntered = DateTime.UtcNow;
             course.DateModified = DateTime.UtcNow;
 
-            // ✅ Ensure all required fields have valid values
-            if (course.SiteSysId <= 0 || course.SubjectSysId <= 0 || course.Region <= 0)
-            {
-                return BadRequest("Missing required fields: SiteSysId, SubjectSysId, Region.");
-            }
-
             _context.Courses.Add(course);
             await _context.SaveChangesAsync();
+
+            if (course.IsMultiSession && request.Sessions != null && request.Sessions.Any())
+            {
+                var sessions = request.Sessions.Select(s => new CourseSession
+                {
+                    CourseSysId = course.CourseSysId,
+                    SessionDate = s.SessionDate,
+                    StartTime = TimeSpan.Parse(s.StartTime),
+                    EndTime = TimeSpan.Parse(s.EndTime),
+                    SessionUrl = s.SessionUrl
+                }).ToList();
+
+                _context.CourseSessions.AddRange(sessions);
+                await _context.SaveChangesAsync();
+            }
 
             return Ok(new { message = "Course scheduled successfully!", courseId = course.CourseSysId });
         }

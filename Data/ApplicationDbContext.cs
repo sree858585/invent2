@@ -144,6 +144,8 @@ namespace HIVTraining_Vue.Data
 
         public virtual DbSet<VwMembershipUser> VwMembershipUsers { get; set; }
 
+        public DbSet<CourseSession> CourseSessions { get; set; }
+
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

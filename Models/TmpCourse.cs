@@ -1,10 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations.Schema;
 
 namespace HIVTraining_Vue.Server.Models;
 
-public partial class Course
+public partial class TmpCourse
 {
     public int CourseSysId { get; set; }
 
@@ -19,8 +18,6 @@ public partial class Course
     public string? CourseTime { get; set; }
 
     public string? Information { get; set; }
-
-    public string? Information2 { get; set; }
 
     public int? Instructor1 { get; set; }
 
@@ -61,29 +58,4 @@ public partial class Course
     public bool Hidden { get; set; }
 
     public bool InHseTraining { get; set; }
-
-    public string? WebinarInst { get; set; }
-
-    public bool? Approve { get; set; }
-
-    public DateTime? ApproveDt { get; set; }
-
-    public bool? Disapprove { get; set; }
-
-    public DateTime? DisapproveDt { get; set; }
-
-    public string? DisApprvNotes { get; set; }
-
-    public DateTime? CourseTimeBegin { get; set; }
-
-    public DateTime? CourseTimeEnd { get; set; }
-
-    public bool IsMultiSession { get; set; }
-
-    // Navigation property to Subject
-    [ForeignKey("SubjectSysId")]
-    public Subject? Subject { get; set; }
-
-    public virtual ICollection<CourseSession> Sessions { get; set; } = new List<CourseSession>();
-
 }

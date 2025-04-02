@@ -1,20 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-using Microsoft.EntityFrameworkCore;
 
-namespace HIVTraining_Vue.Models;
+namespace HIVTraining_Vue.Server.Models;
 
 public partial class Subject
 {
-    public Subject()
-    {
-        CourseListings = new HashSet<CourseListing>();
-        Courses = new HashSet<Course>(); // New navigation property
-
-    }
-
     public int SubjectSysId { get; set; }
 
     public string? CourseTitle { get; set; }
@@ -43,15 +33,12 @@ public partial class Subject
 
     public string? VideoUrl { get; set; }
 
+    /// <summary>
+    /// Indicate this is The Gaming Agency course or not
+    /// </summary>
     public bool Is3rdParty { get; set; }
 
     public string? A3rdPartyCrseId { get; set; }
 
     public bool IsPeerCore { get; set; }
-
-    // Navigation property to CourseListings
-    public ICollection<CourseListing> CourseListings { get; set; }
-
-    public ICollection<Course> Courses { get; set; } // Add the missing navigation property
-
 }
