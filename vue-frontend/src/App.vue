@@ -27,55 +27,55 @@
 </template>
 
 <script>import SideNav from "@/components/SideNav.vue";
-import SiteHeader from "@/components/Header.vue";
-import LoginComponent from "@/components/LoginComponent.vue";
-import RegistrationModal from "@/components/RegistrationModal.vue";
-import eventBus from "@/eventBus.js";
+    import SiteHeader from "@/components/Header.vue";
+    import LoginComponent from "@/components/LoginComponent.vue";
+    import RegistrationModal from "@/components/RegistrationModal.vue";
+    import eventBus from "@/eventBus.js";
 
-export default {
-  name: "App",
-  components: {
-    SideNav,
-    SiteHeader,
-    LoginComponent,
-    RegistrationModal,
-  },
-  data() {
-    return {
-      showLoginModal: false,
-      showRegistrationForm: false,
-    };
-  },
-  created() {
-    eventBus.on("auth-change", this.refreshState);
-  },
-  unmounted() {
-    eventBus.off("auth-change", this.refreshState);
-  },
-  methods: {
-    handleLoginSuccess(userData) {
-      if (!userData || !userData.userId) {
-        alert("⚠️ Login response is invalid.");
-        return;
-      }
+    export default {
+        name: "App",
+        components: {
+            SideNav,
+            SiteHeader,
+            LoginComponent,
+            RegistrationModal,
+        },
+        data() {
+            return {
+                showLoginModal: false,
+                showRegistrationForm: false,
+            };
+        },
+        created() {
+            eventBus.on("auth-change", this.refreshState);
+        },
+        unmounted() {
+            eventBus.off("auth-change", this.refreshState);
+        },
+        methods: {
+            handleLoginSuccess(userData) {
+                if (!userData || !userData.userId) {
+                    alert("⚠️ Login response is invalid.");
+                    return;
+                }
 
-      // Store login info
-      localStorage.setItem("userId", userData.userId);
-      localStorage.setItem("userName", `${userData.firstName} ${userData.lastName}`);
-      localStorage.setItem("jwtToken", userData.token);
+                // Store login info
+                localStorage.setItem("userId", userData.userId);
+                localStorage.setItem("userName", `${userData.firstName} ${userData.lastName}`);
+                localStorage.setItem("jwtToken", userData.token);
 
-      this.showLoginModal = false;
-      eventBus.emit("auth-change");
-    },
-    handleShowRegister() {
-      this.showRegistrationForm = true;
-      this.showLoginModal = false;
-    },
-    refreshState() {
-      this.$forceUpdate(); // Force SideNav to update based on login state
-    },
-  },
-};</script>
+                this.showLoginModal = false;
+                eventBus.emit("auth-change");
+            },
+            handleShowRegister() {
+                this.showRegistrationForm = true;
+                this.showLoginModal = false;
+            },
+            refreshState() {
+                this.$forceUpdate(); // Force SideNav to update based on login state
+            },
+        },
+    };</script>
 
 <style>
     /* Overall app layout */

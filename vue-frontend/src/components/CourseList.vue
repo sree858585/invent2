@@ -1,52 +1,304 @@
 ﻿<template>
     <div class="course-container">
-        <h2 class="heading">Courses for {{ formatName(format) }}</h2>
-        <div v-if="loading" class="loading">Loading courses...</div>
-        <div v-else-if="courses.length > 0" class="course-grid">
-            <div v-for="course in courses" :key="course.courseSysId" class="card">
-                <div class="card-body">
-                    <h5 class="card-title">{{ course.information || "Untitled Course" }}</h5>
-                    <p><strong>Date:</strong> {{ formatDate(course.courseDate) }}</p>
-                    <p><strong>Time:</strong> {{ course.courseTime || "N/A" }}</p>
-                    <p><strong>Location:</strong> {{ course.city || "Unknown City" }}, {{ course.trainingLocation || "Unknown Location" }}</p>
-                    <p><strong>Subject:</strong> {{ course.subjectTitle || "No Subject" }}</p>
-                    <button class="btn-primary" @click="register(course)">Register</button>
+        <div class="filters-container">
+            <div class="filter-section">
+                <label class="filter-label">Training Format:</label>
+                <div class="filter-buttons">
+                    <button v-for="format in formatMap"
+                            :key="format.id"
+                            :class="{ active: selectedFormat === format.id }"
+                            @click="changeFormat(format.id)">
+                        {{ format.label }}
+                    </button>
+                </div>
+
+                <div class="search-box">
+                    <input type="text"
+                           v-model="searchQuery"
+                           placeholder="Search courses..." />
                 </div>
             </div>
         </div>
-        <p v-else class="no-data">No courses available for this format.</p>
+        <div class="filter-section advanced-filters">
+            <div class="filter-field">
+                <label>Region</label>
+                <select v-model="selectedRegion">
+                    <option value="">All</option>
+                    <option v-for="region in regionOptions" :key="region.code" :value="region.code">
+                        {{ region.value }}
+                    </option>
+                </select>
+            </div>
+
+            <div class="filter-field">
+                <label>Category</label>
+                <select v-model="selectedCategory">
+                    <option value="">All</option>
+                    <option v-for="category in categoryOptions" :key="category.code" :value="category.code">
+                        {{ category.value }}
+                    </option>
+                </select>
+            </div>
+
+            <div class="filter-field">
+                <label>Site</label>
+                <select v-model="selectedSite">
+                    <option value="">All</option>
+                    <option v-for="site in siteOptions" :key="site.siteSysId" :value="site.siteSysId">
+                        {{ site.siteName }}
+                    </option>
+                </select>
+            </div>
+
+            <div class="filter-field">
+                <label>From Date</label>
+                <input type="date" v-model="fromDate" />
+            </div>
+
+            <div class="filter-field">
+                <label>To Date</label>
+                <input type="date" v-model="toDate" />
+            </div>
+
+            <div class="filter-field reset-field">
+                <button @click="resetFilters">Reset</button>
+            </div>
+        </div>
+
+        <h2 class="heading">{{ selectedFormat === 'all' ? 'All Courses' : 'Courses for ' + formatName(selectedFormat) }}</h2>   
+        <div v-if="loading" class="loading">Loading courses...</div>
+
+        <template v-else>
+            <div v-if="courses.length > 0" class="course-grid">
+                <div v-for="course in courses" :key="course.courseSysId" class="card" @click="openCourseModal(course)">
+                    <div class="card-image" :style="courseImageStyle"></div>
+                    <div class="card-content">
+                        <h5 class="card-title" :title="course.subjectTitle">
+                            {{ truncateText(course.subjectTitle || 'Untitled Course', 90) }}
+                        </h5>
+                        <div class="card-datetime-block">
+                            <p class="card-date"><strong>Date:</strong> {{ formatDate(course.courseDate) }}</p>
+                            <div class="card-time-seats">
+                                <p class="card-time" :title="course.courseTime">
+                                     <strong>Time:</strong>
+                                    {{ truncateText(course.courseTime || 'N/A', 40) }}
+                                </p>
+                                <span class="card-seats">Seats: {{ course.maxSeats }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <p v-else class="no-data">No courses available for this format.</p>
+        </template>
+
+        <div v-if="totalPages > 1" class="pagination">
+            <button @click="changePage(currentPage - 1)" :disabled="currentPage === 1">⏮ Prev</button>
+            <button v-for="page in visiblePages"
+                    :key="page"
+                    :disabled="page === '...'"
+                    @click="typeof page === 'number' && changePage(page)"
+                    :class="{ active: page === currentPage, ellipsis: page === '...' }">
+                {{ page }}
+            </button>
+            <button @click="changePage(currentPage + 1)" :disabled="currentPage === totalPages">Next ⏭</button>
+        </div>
     </div>
+    <CourseDetailModal v-if="selectedCourse"
+                       :course="selectedCourse"
+                       :formatLookup="formatLookup"
+                       :categoryLookup="categoryLookup"
+                       :regionLookup="regionLookup"
+                       @register="handleRegister"
+                       @close="selectedCourse = null" />
 </template>
 
-<script>import { CourseService } from "@/services/CourseService";
+<script>import apiClient from "@/axios";
+    import CourseDetailModal from "@/components/Modals/CourseDetailModal.vue";
 
     export default {
-        name: "CourseList",
-        props: ["format"],
+        components: {
+            CourseDetailModal,
+        },
+        props: [],
         data() {
             return {
+                formatMap: [
+                    { id: 'all', label: 'All' },
+                    { id: 1, label: 'In Person' },
+                    { id: 2, label: 'Online' },
+                    { id: 3, label: 'Archived Webinars' },
+                    { id: 4, label: 'Live Webinars' },
+                    { id: 5, label: 'Hybrid' },
+                    { id: 6, label: 'New' },
+                ], 
                 courses: [],
                 loading: true,
+                currentPage: 1,
+                pageSize: 9,
+                totalItems: 0,
+                selectedCourse: null,
+                selectedFormat: 'all',
+                searchQuery: "",
+                selectedRegion: "",
+                selectedCategory: "",
+                selectedSite: "",
+                fromDate: "",
+                toDate: "",
+                regionOptions: [],
+                categoryOptions: [],
+                siteOptions: []
+        
             };
         },
-        created() {
-            this.getCourses();
-        },
-        watch: {
-            format() {
-                this.getCourses();
+        computed: {
+            courseImageStyle() {
+                const imageUrl = require("@/assets/hiv2.png");
+                return {
+                    backgroundImage: `url(${imageUrl})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                    backgroundRepeat: "no-repeat",
+                };
+            },
+            totalPages() {
+                return Math.ceil(this.totalItems / this.pageSize);
+            },
+            visiblePages() {
+                const pages = [];
+                const total = this.totalPages;
+                const current = this.currentPage;
+                if (total <= 7) {
+                    for (let i = 1; i <= total; i++) pages.push(i);
+                } else {
+                    pages.push(1);
+                    if (current > 3) pages.push("...");
+                    const start = Math.max(2, current - 1);
+                    const end = Math.min(total - 1, current + 1);
+                    for (let i = start; i <= end; i++) pages.push(i);
+                    if (current < total - 2) pages.push("...");
+                    pages.push(total);
+                }
+                return pages;
             },
         },
+        watch: {
+            "$route.params.format": {
+                immediate: true,
+                handler(newVal) {
+                    const value = newVal === undefined || newVal === 'all' ? 'all' : parseInt(newVal);
+                    this.selectedFormat = value;
+                    if (newVal === undefined) {
+                        this.$router.replace('/course-list/all');
+                    }
+                    this.currentPage = 1;
+                    this.getCourses();
+                },
+            },
+            searchQuery() {
+                this.currentPage = 1;
+                this.getCourses();
+            },
+            selectedRegion() {
+                this.currentPage = 1;
+                this.getCourses();
+            },
+            selectedCategory() {
+                this.currentPage = 1;
+                this.getCourses();
+            },
+            selectedSite() {
+                this.currentPage = 1;
+                this.getCourses();
+            },
+            fromDate() {
+                this.currentPage = 1;
+                this.getCourses();
+            },
+            toDate() {
+                this.currentPage = 1;
+                this.getCourses();
+            }
+        },
+        mounted() {
+            this.loadLookups(); 
+            const currentFormat = this.$route.params.format;
+            if (!currentFormat) {
+                this.$router.replace('/course-list/all');
+            }
+        },
         methods: {
-            async getCourses() {
-                this.loading = true;
+            
+            resetFilters() {
+                this.selectedRegion = "";
+                this.selectedCategory = "";
+                this.selectedSite = "";
+                this.fromDate = "";
+                this.toDate = "";
+                this.searchQuery = "";
+                this.getCourses();
+            },
+            async loadLookups() {
                 try {
-                    const response = await CourseService.getCoursesByFormat(this.format);
-                    this.courses = response.data?.$values ?? response.data;
+                    const [regions, categories, sites] = await Promise.all([
+                        apiClient.get("/Lookup/regions"),
+                        apiClient.get("/Lookup/categories"),
+                        apiClient.get("/Lookup/sites")
+                    ]);
+                    this.regionOptions = regions.data?.$values ?? regions.data ?? [];
+                    this.categoryOptions = categories.data?.$values ?? categories.data ?? [];
+                    this.siteOptions = sites.data?.$values ?? sites.data ?? [];
                 } catch (error) {
-                    console.error("Error fetching courses:", error);
-                } finally {
-                    this.loading = false;
+                    console.error("Error loading lookup data:", error);
+                }
+            },
+    async getCourses() {
+        this.loading = true;
+        try {
+           
+            const formatParam = this.selectedFormat === 'all' ? 0 : this.selectedFormat;
+            const res = await apiClient.get(`/Course/FormatPaged/${formatParam}`, {
+                params: {
+                    page: this.currentPage,
+                    pageSize: this.pageSize,
+                    search: this.searchQuery || undefined,
+                    region: this.selectedRegion || undefined,
+                    category: this.selectedCategory || undefined,
+                    site: this.selectedSite || undefined,
+                    fromDate: this.fromDate || undefined,
+                    toDate: this.toDate || undefined
+                },
+            });
+
+            this.courses = res.data?.data?.$values ?? [];
+            this.totalItems = res.data?.total ?? 0;
+        } catch (error) {
+            console.error("Error fetching courses:", error);
+        } finally {
+            this.loading = false;
+        }
+    },
+            changeFormat(newFormat) {
+                if (this.selectedFormat !== newFormat) {
+                    if (newFormat === 'all') {
+                        this.$router.push(`/course-list/all`);
+                    } else {
+                        this.$router.push(`/course-list/${newFormat}`);
+                    }
+                }
+            },
+            openCourseModal(course) {
+                this.selectedCourse = course;
+            },
+            truncateText(text, maxLength) {
+                return text?.length > maxLength ? text.slice(0, maxLength) + "..." : text;
+            },
+            
+            changePage(page) {
+                if (page >= 1 && page <= this.totalPages) {
+                    this.currentPage = page;
+                    this.getCourses();
+                    window.scrollTo({ top: 0, behavior: "smooth" });
                 }
             },
             formatName(format) {
@@ -70,14 +322,12 @@
     };</script>
 
 <style scoped>
-    /* General Container */
     .course-container {
-        margin: 0; /* Remove margin */
         padding: 20px;
-        width: 100%; /* Full width */
-        min-height: 100vh; /* Full height */
+        width: 100%;
+        min-height: 100vh;
         background-color: #f4f6f8;
-        box-sizing: border-box; /* Ensures padding is included in the width */
+        box-sizing: border-box;
     }
 
     .heading {
@@ -87,74 +337,262 @@
         color: #3f51b5;
     }
 
-    /* Loading State */
-    .loading {
+    .loading, .no-data {
         text-align: center;
         font-size: 1.5rem;
         color: #666;
         margin-top: 20px;
     }
 
-    /* Course Grid */
-    .course-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); /* Flexible grid layout */
-        gap: 20px;
-        padding: 10px;
-        width: 100%;
-    }
-
-    /* Card Styling */
-    .card {
-        background: linear-gradient(to bottom right, #ffffff, #f9f9f9);
-        border-radius: 12px;
-        padding: 20px;
-        box-shadow: 0 6px 10px rgba(0, 0, 0, 0.1);
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-    }
-
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
-        }
-
-    .card-body {
+    .filters-container {
         display: flex;
         flex-direction: column;
+        gap: 20px;
+        margin-bottom: 30px;
+        padding: 0 20px;
+    }
+
+    /* Unified filter section style */
+    .filter-section {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        justify-content: flex-start;
+        gap: 20px;
+    }
+
+    .filter-label {
+        font-weight: bold;
+        font-size: 1rem;
+        color: #333;
+        font-size: 20px;
+    }
+
+    .filter-buttons {
+        display: flex;
+        flex-wrap: wrap;
         gap: 10px;
     }
 
-    .card-title {
-        font-size: 1.8rem;
-        font-weight: bold;
-        color: #333;
-        margin-bottom: 10px;
-    }
-
-    /* Button Styling */
-    .btn-primary {
-        background-color: #3f51b5;
-        color: #fff;
-        padding: 10px 16px;
-        border: none;
-        border-radius: 8px;
-        font-weight: bold;
-        text-transform: uppercase;
-        transition: background-color 0.3s ease, transform 0.3s ease;
-        cursor: pointer;
-        align-self: flex-start;
-    }
-
-        .btn-primary:hover {
-            background-color: #2c3e50;
-            transform: scale(1.05);
+        .filter-buttons button {
+            padding: 8px 16px;
+            background-color: #f5f5f5;
+            border: 1px solid #ccc;
+            border-radius: 20px;
+            font-weight: 600;
+            color: #3f51b5;
+            transition: all 0.2s ease;
+            cursor: pointer;
         }
 
-    /* No Data Message */
-    .no-data {
-        text-align: center;
-        font-size: 1.5rem;
-        color: #999;
-        margin-top: 20px;
+            .filter-buttons button.active,
+            .filter-buttons button:hover {
+                background-color: #3f51b5;
+                color: white;
+                border-color: transparent;
+            }
+
+    .search-box {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 220px;
+        max-width: 260px;
     }
+
+        .search-box input {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 20px;
+            font-size: 1rem;
+            width: 100%;
+        }
+
+    .advanced-filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        padding: 0 20px;
+        margin-top: 10px;
+        align-items: flex-end;
+        justify-content: flex-start;
+    }
+
+    .filter-field {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 180px;
+        max-width: 240px;
+    }
+
+        .filter-field label {
+            font-weight: 600;
+            margin-bottom: 4px;
+            color: #333;
+        }
+
+        .filter-field select,
+        .filter-field input[type="date"] {
+            padding: 8px 12px;
+            border-radius: 20px;
+            border: 1px solid #ccc;
+            font-size: 1rem;
+            background-color: #fff;
+            color: #333;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+    .course-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 32px;
+        padding: 20px;
+    }
+
+    .card {
+        background-color: #fff;
+        border-radius: 20px;
+        overflow: hidden;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        transition: transform 0.25s ease;
+        position: relative;
+    }
+
+        .card:hover {
+            transform: translateY(-8px);
+        }
+
+    .card-image {
+        height: 180px;
+        width: 100%;
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+    }
+
+    .card-content {
+        padding: 16px 20px 20px;
+        display: flex;
+        flex-direction: column;
+        font-family: 'Segoe UI', 'Roboto', sans-serif;
+    }
+
+    .card-title {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #1a1a1a;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        line-height: 1.4;
+        height: calc(1.4em * 3);
+        margin: 0;
+        padding-top: 10px;
+    }
+
+    .card-datetime-block {
+        display: flex;
+        flex-direction: column;
+        font-size: 1rem;
+        color: #333;
+        margin-top: 10px;
+    }
+
+    .card-time-seats {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        margin-top: auto;
+    }
+
+    .card-time {
+        font-weight: 500;
+        color: #555;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1;
+    }
+
+    .card-seats {
+        background-color: #e8eaf6;
+        color: #3f51b5;
+        padding: 5px 10px;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 0.95rem;
+        white-space: nowrap;
+    }
+
+    .pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+        margin-top: 40px;
+        flex-wrap: wrap;
+    }
+
+        .pagination button {
+            padding: 10px 16px;
+            font-size: 15px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            background-color: white;
+            color: #3f51b5;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+            .pagination button:hover:not(:disabled) {
+                background-color: #3f51b5;
+                color: white;
+            }
+
+            .pagination button:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+
+        .pagination .active {
+            background-color: #3f51b5;
+            color: white;
+        }
+
+        .pagination .ellipsis {
+            background-color: transparent;
+            border: none;
+            cursor: default;
+            color: #999;
+        }
+    .reset-field {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        justify-content: flex-end;
+        flex: 1 1 140px;
+        max-width: 160px;
+    }
+        .reset-field button {
+            padding: 10px 24px;
+            background-color: #e53935;
+            color: white;
+            border: none;
+            border-radius: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            white-space: nowrap;
+        }
+
+            .reset-field button:hover {
+                background-color: #c62828;
+            }
 </style>

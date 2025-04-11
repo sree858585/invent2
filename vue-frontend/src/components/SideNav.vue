@@ -59,24 +59,15 @@
                 <li>
                     <router-link to="/course-list-page">
                         <span class="icon">🗂️</span>
-                        <span v-show="isExpanded">Courses</span>
+                        <span v-show="isExpanded">Upcoming Courses</span>
                     </router-link>
                 </li>
 
                 <li>
-                    <div class="dropdown-header" @click="toggleSection('courses')">
+                    <router-link to="/course-list/all">
                         <span class="icon">📚</span>
-                        <span v-show="isExpanded">Course List</span>
-                        <span class="dropdown-arrow" :class="{ rotated: sections.courses }">▼</span>
-                    </div>
-                    <ul v-if="sections.courses && isExpanded" class="dropdown-menu">
-                        <li><router-link to="/course-list/1">In Person</router-link></li>
-                        <li><router-link to="/course-list/2">Online</router-link></li>
-                        <li><router-link to="/course-list/3">Archived Webinars</router-link></li>
-                        <li><router-link to="/course-list/4">Live Webinars</router-link></li>
-                        <li><router-link to="/course-list/5">Hybrid</router-link></li>
-                        <li><router-link to="/course-list/6">New</router-link></li>
-                    </ul>
+                        <span v-show="isExpanded">Courses</span>
+                    </router-link>
                 </li>
 
                 <li>
