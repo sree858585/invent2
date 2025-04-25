@@ -65,13 +65,22 @@
             </div>
         </div>
 
-        <h2 class="heading">{{ selectedFormat === 'all' ? 'All Courses' : 'Courses for ' + formatName(selectedFormat) }}</h2>   
+        <h2 class="heading">{{ selectedFormat === 'all' ? 'All Courses' : 'Courses for ' + formatName(selectedFormat) }}</h2>
         <div v-if="loading" class="loading">Loading courses...</div>
 
         <template v-else>
             <div v-if="courses.length > 0" class="course-grid">
                 <div v-for="course in courses" :key="course.courseSysId" class="card" @click="openCourseModal(course)">
-                    <div class="card-image" :style="courseImageStyle"></div>
+
+                    <div class="card-image" :style="courseImageStyle">
+                        <div v-if="course.cnecredits || course.oasascredits" class="credit-tag">
+                            {{
+                          [course.cnecredits ? 'CNE' : '', course.oasascredits ? 'OASAS' : '']
+                            .filter(Boolean)
+                            .join(' | ')
+                            }}
+                        </div>
+                    </div>
                     <div class="card-content">
                         <h5 class="card-title" :title="course.subjectTitle">
                             {{ truncateText(course.subjectTitle || 'Untitled Course', 90) }}
@@ -80,7 +89,7 @@
                             <p class="card-date"><strong>Date:</strong> {{ formatDate(course.courseDate) }}</p>
                             <div class="card-time-seats">
                                 <p class="card-time" :title="course.courseTime">
-                                     <strong>Time:</strong>
+                                    <strong>Time:</strong>
                                     {{ truncateText(course.courseTime || 'N/A', 40) }}
                                 </p>
                                 <span class="card-seats">Seats: {{ course.maxSeats }}</span>
@@ -110,15 +119,31 @@
                        :categoryLookup="categoryLookup"
                        :regionLookup="regionLookup"
                        @register="handleRegister"
+                       @request-login="showLoginModal = true"
                        @close="selectedCourse = null" />
+    <SuccessModal v-if="showSuccessModal" :email="user?.email || ''" @close="handleSuccessClose" />
+    <LoginComponent v-if="showLoginModal"
+                    @login-success="handleLoginSuccess"
+                    @close="showLoginModal = false"
+                    @show-register="handleShowRegister" 
+/>
+    <RegisterComponent v-if="showRegisterModal"
+                       @close="showRegisterModal = false"
+                       @register-success="handleRegisterSuccess" />
 </template>
 
 <script>import apiClient from "@/axios";
     import CourseDetailModal from "@/components/Modals/CourseDetailModal.vue";
+    import SuccessModal from "@/components/Modals/SuccessModal.vue";
+    import LoginComponent from "@/components/LoginComponent.vue";
+    import RegisterComponent from "@/components/RegistrationModal.vue";
 
     export default {
         components: {
             CourseDetailModal,
+            SuccessModal,
+            LoginComponent,
+            RegisterComponent
         },
         props: [],
         data() {
@@ -147,7 +172,11 @@
                 toDate: "",
                 regionOptions: [],
                 categoryOptions: [],
-                siteOptions: []
+                siteOptions: [],
+                user: null, 
+                showSuccessModal: false,
+                showLoginModal: false,
+                showRegisterModal: false
         
             };
         },
@@ -221,13 +250,71 @@
             }
         },
         mounted() {
-            this.loadLookups(); 
+            this.loadLookups();
+            this.fetchUser();
             const currentFormat = this.$route.params.format;
             if (!currentFormat) {
                 this.$router.replace('/course-list/all');
             }
         },
         methods: {
+            handleShowRegister() {
+  this.showLoginModal = false;
+  this.showRegisterModal = true;
+},
+handleRegisterSuccess() {
+    this.showRegisterModal = false;
+    // Optionally: reopen login or auto-login
+    this.fetchUser(); // or any post-registration logic
+  },
+            handleLoginSuccess(userData) {
+    localStorage.setItem("userId", userData.userId);
+    localStorage.setItem("userName", `${userData.firstName} ${userData.lastName}`);
+    localStorage.setItem("jwtToken", userData.token);
+    this.showLoginModal = false;
+
+    if (this.selectedCourse) {
+    this.handleRegister(this.selectedCourse, true); // pass a flag for post-login registration
+    }
+  },
+            async fetchUser() {
+                const userId = localStorage.getItem("userId");
+                if (!userId) return;
+                try {
+                    const res = await apiClient.get(`/user/${userId}`);
+                    this.user = res.data;
+                } catch (err) {
+                    console.error("Failed to fetch user:", err);
+                }
+            },
+           async handleRegister(course, isFromLogin = false) {
+              try {
+                const userId = localStorage.getItem("userId");
+                await apiClient.post("/Course/register", {
+                  userId,
+                  courseId: course.courseSysId,
+                  adaneed: course.adaneed || false,
+                  adadetails: course.adadetails || ""
+                });
+
+                this.showSuccessModal = true;
+
+                if (!isFromLogin) {
+                  this.selectedCourse = null; // Only close if not coming from login
+                } else {
+                  // Close modal *after* success screen is visible for a bit
+                  setTimeout(() => {
+                    this.selectedCourse = null;
+                  }, 500); // you can increase if needed
+                }
+
+              } catch (err) {
+                console.error("Registration failed:", err);
+              }
+            },
+            handleSuccessClose() {
+                this.showSuccessModal = false;
+            },
             
             resetFilters() {
                 this.selectedRegion = "";
@@ -471,6 +558,20 @@
         background-size: cover;
         background-position: center;
         background-repeat: no-repeat;
+        position: relative;
+    }
+    .credit-tag {
+        position: absolute;
+        top: 10px;
+        right: 10px; /* You can switch to `left: 10px` if needed */
+        background-color: #3f51b5;
+        color: white;
+        font-weight: bold;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        z-index: 10;
     }
 
     .card-content {
@@ -595,4 +696,7 @@
             .reset-field button:hover {
                 background-color: #c62828;
             }
+    
+
+    
 </style>

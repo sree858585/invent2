@@ -35,8 +35,7 @@
                 <!-- Description -->
                 <div class="modal-section">
                     <h4 class="section-title">📝 Description</h4>
-                    <p>{{ course.subjectDescription || 'No description available.' }}</p>
-                </div>
+                    <div v-html="course.subjectDescription || 'No description available.'" class="rich-html-content"></div>                </div>
 
                 <!-- Presenter Section -->
                 <div class="modal-section" v-if="hasPresenters">
@@ -72,10 +71,39 @@
                     </div>
                 </div>
 
+                <!-- ADA Requirement Section -->
+                <div class="modal-section">
+                    <label class="ada-checkbox">
+                        <input type="checkbox" v-model="showAdaPrompt" @change="handleAdaCheckbox" />
+                        Will you require special accommodation under the Americans with Disability Act (ADA) to participate in trainings?
+                    </label>
+
+                    <!-- ADA Confirmation Prompt -->
+                    <div v-if="showAdaPrompt && showAdaConfirm" class="ada-confirm-box">
+                        <p><strong>Are you sure you require ADA accommodations?</strong></p>
+                        <div class="button-group">
+                            <button @click="confirmAda">Yes, I need ADA</button>
+                            <button @click="cancelAda">No, I do not</button>
+                        </div>
+                    </div>
+
+                    <!-- ADA Details Textbox -->
+                    <div v-if="adaNeeded" class="ada-details-box">
+                        <label for="adaDetails"><strong>Please describe the accommodation:</strong></label>
+                        <textarea v-model="adaDetails" id="adaDetails" placeholder="Enter accommodation details..."></textarea>
+                    </div>
+                </div>
+
                 <!-- Buttons -->
                 <div class="button-group">
-                    <button class="btn-primary" @click="$emit('register', course)">Register</button>
-                    <button class="btn-secondary" @click="$emit('close')">Cancel</button>
+                    <template v-if="alreadyRegistered">
+                        <span style="color: #388e3c; font-weight: bold;">✅ This course is already registered.</span>
+                        <button class="btn-secondary" @click="$emit('close')">Close</button>
+                    </template>
+                    <template v-else>
+                        <button class="btn-primary" @click="registerCourse">Register</button>
+                        <button class="btn-secondary" @click="$emit('close')">Cancel</button>
+                    </template>
                 </div>
             </div>
         </div>
@@ -83,45 +111,122 @@
 </template>
 
 <script>import imagew from '@/assets/img.png';
+import apiClient from "@/axios";
 
-    export default {
-        props: ["course"],
-        data() {
-            return {
-                showNote1: false,
-                showNote2: false,
-            };
+export default {
+    props: ["course"],
+    data() {
+        return {
+            showNote1: false,
+            showNote2: false,
+            alreadyRegistered: false,
+            showAdaPrompt: false,
+            showAdaConfirm: false,
+            adaNeeded: false,
+            adaDetails: "",
+        };
+    },
+    computed: {
+        hasPresenters() {
+            return this.course.instructorLabel || this.course.instructor2Label;
         },
-        computed: {
-            hasPresenters() {
-                return this.course.instructorLabel || this.course.instructor2Label;
-            },
-            bannerStyle() {
-                return {
-                    backgroundImage: `url(${imagew})`,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                    backgroundRepeat: 'no-repeat'
-                };
+        bannerStyle() {
+            return {
+                backgroundImage: `url(${imagew})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat'
+            };
+        }
+    },
+    async mounted() {
+        document.addEventListener("keydown", this.handleKeydown);
+
+        try {
+            const userId = localStorage.getItem("userId");
+            const res = await apiClient.get(`/Course/check-registered`, {
+                params: {
+                    userId,
+                    courseId: this.course.courseSysId
+                }
+            });
+            this.alreadyRegistered = res.data?.isRegistered;
+        } catch (err) {
+            console.error("Registration check failed:", err);
+        }
+    },
+    unmounted() {
+        document.removeEventListener("keydown", this.handleKeydown);
+    },
+    methods: {
+        handleLoginSuccess(userData) {
+        localStorage.setItem("userId", userData.userId);
+        localStorage.setItem("userName", `${userData.firstName} ${userData.lastName}`);
+        localStorage.setItem("jwtToken", userData.token);
+
+        this.showLoginModal = false;
+
+        // ✅ Retry registration if a course was selected
+        if (this.selectedCourse) {
+            this.handleRegister(this.selectedCourse);
+        }
+    },
+       registerCourse() {
+    const userId = localStorage.getItem("userId");
+
+    if (!userId) {
+        console.log("🚫 Not logged in. Emitting request-login"); 
+        this.$emit("request-login");
+        return;
+    }
+
+    this.$emit("register", {
+        ...this.course,
+        adaneed: this.adaNeeded,
+        adadetails: this.adaDetails
+    });
+},
+        handleAdaCheckbox() {
+    if (this.showAdaPrompt) {
+        this.showAdaConfirm = true;
+    } else {
+        // Reset if unchecked again
+        this.adaNeeded = false;
+        this.adaDetails = "";
+        this.showAdaConfirm = false;
+    }
+    },
+    confirmAda() {
+    this.adaNeeded = true;
+    this.showAdaConfirm = false;
+    },
+    cancelAda() {
+    this.showAdaPrompt = false;
+    this.adaNeeded = false;
+    this.adaDetails = "";
+    this.showAdaConfirm = false;
+    },
+        handleKeydown(e) {
+            if (e.key === "k" || e.key === "K" || e.key === "Escape") {
+                this.$emit("close");
             }
         },
-        methods: {
-            toggleNote(instructor) {
-                if (instructor === 'instructor1') this.showNote1 = !this.showNote1;
-                if (instructor === 'instructor2') this.showNote2 = !this.showNote2;
-            },
-            formatDate(date) {
-                return new Date(date).toLocaleDateString();
-            },
-            formatTime(time) {
-                if (!time) return "N/A";
-                const [hours, minutes] = time.split(":");
-                const date = new Date();
-                date.setHours(hours, minutes);
-                return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-            },
+        toggleNote(instructor) {
+            if (instructor === 'instructor1') this.showNote1 = !this.showNote1;
+            if (instructor === 'instructor2') this.showNote2 = !this.showNote2;
         },
-    };</script>
+        formatDate(date) {
+            return new Date(date).toLocaleDateString();
+        },
+        formatTime(time) {
+            if (!time) return "N/A";
+            const [hours, minutes] = time.split(":");
+            const date = new Date();
+            date.setHours(hours, minutes);
+            return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        },
+    },
+};</script>
 
 <style scoped>
     .modal-overlay {
@@ -342,4 +447,90 @@
         pointer-events: none;
         z-index: 0;
     }
+    .ada-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 15px;
+        margin-bottom: 10px;
+    }
+
+    .ada-confirm-box {
+        background: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 12px;
+        border-radius: 6px;
+        margin-top: 8px;
+    }
+
+    .ada-details-box {
+        margin-top: 12px;
+    }
+
+        .ada-details-box textarea {
+            width: 100%;
+            min-height: 80px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 15px;
+            resize: vertical;
+        }
+    .ada-confirm-box .button-group {
+        display: flex;
+        gap: 12px;
+        margin-top: 10px;
+        justify-content: flex-start;
+    }
+
+        .ada-confirm-box .button-group button {
+            padding: 10px 20px;
+            font-size: 15px;
+            font-weight: 600;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+            .ada-confirm-box .button-group button:first-child {
+                background-color: #1976d2; /* Primary Blue */
+                color: white;
+            }
+
+                .ada-confirm-box .button-group button:first-child:hover {
+                    background-color: #1565c0;
+                }
+
+            .ada-confirm-box .button-group button:last-child {
+                background-color: #eeeeee; /* Light Gray */
+                color: #333;
+            }
+
+                .ada-confirm-box .button-group button:last-child:hover {
+                    background-color: #d6d6d6;
+                }
+    .rich-html-content {
+        font-size: 15.5px;
+        line-height: 1.7;
+        color: #333;
+    }
+
+        .rich-html-content ul {
+            padding-left: 20px;
+            margin-bottom: 16px;
+        }
+
+        .rich-html-content li {
+            margin-bottom: 8px;
+        }
+
+        .rich-html-content a {
+            color: #1976d2;
+            text-decoration: underline;
+        }
+
+        .rich-html-content strong {
+            font-weight: bold;
+        }
 </style>

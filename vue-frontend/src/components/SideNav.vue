@@ -38,16 +38,10 @@
 
                 <!-- Dropdown Items Template -->
                 <li v-if="isUserLoggedIn">
-                    <div class="dropdown-header" @click="toggleSection('myCourses')">
+                    <router-link to="/my-courses/registered">
                         <span class="icon">📋</span>
-                        <span v-show="isExpanded">My Courses</span>
-                        <span class="dropdown-arrow" :class="{ rotated: sections.myCourses }">▼</span>
-                    </div>
-                    <ul v-if="sections.myCourses && isExpanded" class="dropdown-menu">
-                        <li><router-link to="/my-courses/in-progress">In Progress</router-link></li>
-                        <li><router-link to="/my-courses/registered">Registered</router-link></li>
-                        <li><router-link to="/my-courses/completed">Completed</router-link></li>
-                    </ul>
+                        <span v-show="isExpanded">My Learnings</span>
+                    </router-link>
                 </li>
 
                 <li v-if="isUserLoggedIn">
