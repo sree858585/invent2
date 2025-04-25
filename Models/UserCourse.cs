@@ -42,4 +42,7 @@ public partial class UserCourse
     public string? Adadetails { get; set; }
 
     public int Hybrid { get; set; }
+
+    public bool IsWaitlisted { get; set; } = false;
+    public int? WaitlistNumber { get; set; }
 }
