@@ -121,7 +121,10 @@
                        @register="handleRegister"
                        @request-login="showLoginModal = true"
                        @close="selectedCourse = null" />
-    <SuccessModal v-if="showSuccessModal" :email="user?.email || ''" @close="handleSuccessClose" />
+    <SuccessModal v-if="showSuccessModal"
+                  :message="successMessage"
+                  :email="user?.email || ''"
+                  @close="handleSuccessClose" />
     <LoginComponent v-if="showLoginModal"
                     @login-success="handleLoginSuccess"
                     @close="showLoginModal = false"
@@ -290,13 +293,14 @@ handleRegisterSuccess() {
            async handleRegister(course, isFromLogin = false) {
               try {
                 const userId = localStorage.getItem("userId");
-                await apiClient.post("/Course/register", {
+                const res = await apiClient.post("/Course/register", {
                   userId,
                   courseId: course.courseSysId,
                   adaneed: course.adaneed || false,
                   adadetails: course.adadetails || ""
                 });
-
+                const msg = res.data?.message || "Registration successful.";
+                this.successMessage = msg;
                 this.showSuccessModal = true;
 
                 if (!isFromLogin) {

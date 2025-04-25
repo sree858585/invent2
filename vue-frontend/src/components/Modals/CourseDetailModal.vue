@@ -171,11 +171,10 @@ export default {
             this.handleRegister(this.selectedCourse);
         }
     },
-       registerCourse() {
+      registerCourse() {
     const userId = localStorage.getItem("userId");
 
     if (!userId) {
-        console.log("🚫 Not logged in. Emitting request-login"); 
         this.$emit("request-login");
         return;
     }

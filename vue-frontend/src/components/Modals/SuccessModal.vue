@@ -14,6 +14,7 @@
                 You will receive an email shortly with more details about this course.<br />
                 📧 Sent to: <strong>{{ email }}</strong>
             </p>
+            <p>{{ message }}</p>
             <button class="ok-btn" @click="$emit('close')">OK</button>
         </div>
     </div>
@@ -22,11 +23,12 @@
 <script>export default {
     name: "SuccessModal",
     props: {
-        email: {
-            type: String,
-            required: true
-        }
+    email: String,
+    message: {
+        type: String,
+        default: "Registration successful."
     }
+}
 };</script>
 
 <style scoped>

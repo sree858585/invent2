@@ -12,7 +12,7 @@
         <div v-else class="course-list">
             <div v-for="course in filteredCourses"
                  :key="course.courseSysId"
-                 class="course-card"
+                 :class="['course-card', { waitlisted: course.isWaitlisted }]"
                  role="button"
                  tabindex="0"
                  @click="openCourseDetail(course.courseSysId)">
@@ -24,6 +24,10 @@
                     <p class="course-date"><strong>Date:</strong> {{ formatDate(course.courseDate) }}</p>
                     <p class="course-time"><strong>Time:</strong> {{ truncateText(course.courseTime || 'N/A', 40) }}</p>
                     <p class="course-desc">{{ truncateText(course.subjectDescription || 'No description provided.', 120) }}</p>
+                    <div v-if="course.isWaitlisted" class="waitlist-banner">
+                        <span class="icon">⏳</span>
+                        <span class="message">You are currently on the waitlist for this course.</span>
+                    </div>
                 </div>
 
                 <div class="course-actions">
@@ -376,4 +380,31 @@
         margin-top: 6px;
         text-align: center;
     }
+    .course-card.waitlisted {
+        opacity: 0.5;
+        pointer-events: none;
+    }
+    .waitlist-banner {
+        display: flex;
+        align-items: center;
+        background-color: #fff3cd;
+        border-left: 5px solid #ff9800;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        font-weight: 500;
+        color: #5d4037;
+        margin-top: 12px;
+        box-shadow: 0 2px 6px rgba(255, 152, 0, 0.2);
+    }
+
+        .waitlist-banner .icon {
+            font-size: 1.2rem;
+            margin-right: 8px;
+            color: #ff9800;
+        }
+
+        .waitlist-banner .message {
+            flex: 1;
+        }
 </style>
