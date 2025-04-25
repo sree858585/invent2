@@ -182,6 +182,25 @@ namespace HIVTraining_Vue.Server.Controllers
 
             await _context.SaveChangesAsync();
 
+            //  Handle waitlisted users if seats are available
+            if (existingCourse.MaxSeats.HasValue && existingCourse.MaxSeats > 0)
+            {
+                var waitlistedUsers = await _context.UserCourses
+                    .Where(uc => uc.CourseSysId == id && uc.IsWaitlisted)
+                    .OrderBy(uc => uc.WaitlistNumber)
+                    .Take(existingCourse.MaxSeats.Value)
+                    .ToListAsync();
+
+                foreach (var userCourse in waitlistedUsers)
+                {
+                    userCourse.IsWaitlisted = false;
+                    userCourse.WaitlistNumber = null;
+                    existingCourse.MaxSeats--; // Occupy the seat
+                }
+
+                await _context.SaveChangesAsync(); // Save waitlist updates
+            }
+
             return Ok(new { message = "Course updated successfully!" });
         }
 

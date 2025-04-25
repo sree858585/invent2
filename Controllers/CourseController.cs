@@ -173,8 +173,6 @@ public async Task<IActionResult> GetCoursesByFormatPaged(
             bool adaNeed = body.TryGetProperty("adaneed", out var adaNeedProp) && adaNeedProp.GetBoolean();
             string? adaDetails = body.TryGetProperty("adadetails", out var adaDetailsProp) ? adaDetailsProp.GetString() : null;
 
-            Console.WriteLine($"Registering CourseId: {courseId} for UserId: {userId} ADA: {adaNeed}, Details: {adaDetails}");
-
             var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == userId);
             if (user == null)
                 return NotFound(new { message = "User not found" });
@@ -183,11 +181,17 @@ public async Task<IActionResult> GetCoursesByFormatPaged(
             if (course == null)
                 return NotFound(new { message = "Course not found" });
 
-            // ✅ Check if seats are available
-            if (course.MaxSeats.HasValue && course.MaxSeats <= 0)
-                return BadRequest(new { message = "No seats available for this course." });
+            bool isWaitlisted = course.MaxSeats == null || course.MaxSeats <= 0;
 
-            // ✅ Create user-course entry
+            int? waitlistNumber = null;
+
+            if (isWaitlisted)
+            {
+                waitlistNumber = await _context.UserCourses
+                    .Where(uc => uc.CourseSysId == courseId && uc.IsWaitlisted)
+                    .CountAsync() + 1;
+            }
+
             var userCourse = new UserCourse
             {
                 UserSysId = user.UserSysId,
@@ -197,18 +201,21 @@ public async Task<IActionResult> GetCoursesByFormatPaged(
                 DateStatusChanged = DateTime.UtcNow,
                 Token = Guid.NewGuid(),
                 Adaneed = adaNeed,
-                Adadetails = adaNeed ? adaDetails : null
+                Adadetails = adaNeed ? adaDetails : null,
+                IsWaitlisted = isWaitlisted,
+                WaitlistNumber = waitlistNumber
             };
 
             _context.UserCourses.Add(userCourse);
 
-            // ✅ Reduce available seats
-            if (course.MaxSeats.HasValue)
-                course.MaxSeats--;
+            if (!isWaitlisted && course.MaxSeats.HasValue)
+            {
+                course.MaxSeats--; // Normal seat decrement if not waitlisted
+            }
 
             await _context.SaveChangesAsync();
 
-            return Ok(new { message = "Registration successful." });
+            return Ok(new { message = isWaitlisted ? "Registered to waitlist." : "Registration successful." });
         }
 
         [HttpGet("check-registered")]
@@ -244,6 +251,7 @@ public async Task<IActionResult> GetCoursesByFormatPaged(
                 {
                     uc.CourseSysId,
                     uc.Status,
+                    uc.IsWaitlisted, 
                     c.CourseDate,
                     c.CourseTime,
                     c.MaxSeats,
