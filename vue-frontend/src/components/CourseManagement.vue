@@ -21,7 +21,7 @@
                     <option v-for="f in formats" :key="f.code" :value="f.code">{{ f.value }}</option>
                 </select>
                 <select v-model="filters.site">
-                    <option value="">All Sites</option>
+                    <option value="">All Sites</option> 
                     <option v-for="s in sites" :key="s.siteSysId" :value="s.siteSysId">{{ s.siteName }}</option>
                 </select>
                 <select v-model="filters.category">
@@ -61,7 +61,7 @@
                         </td>
                         <td>{{ course.siteName }}</td>
                         <td>{{ formatDate(course.courseDate) }}</td>
-                        <td>{{ course.signupCount ?? 0 }}</td>
+                        <td>{{ course.registeredCount ?? 0 }}</td>
                         <td>
                             <label class="toggle-switch">
                                 <input type="checkbox" :checked="course.delivered" @change="updateDelivered(course)" />
@@ -125,9 +125,18 @@
                      :course="modalCourse"
                      @close="closeModal"
                      @updated="handleCourseUpdated" />
-    <AddUserModal v-if="modalType === 'addUser'" :course="modalCourse" @close="closeModal" />
-    <CancelCourseModal v-if="modalType === 'cancel'" :course="modalCourse" @close="closeModal" />
-    <DropUserModal v-if="modalType === 'dropUser'" :course="modalCourse" @close="closeModal" />
+    <AddUserModal v-if="modalType === 'addUser'"
+                  :course="modalCourse"
+                  @close="closeModal"
+                  @user-changed="updateSignupCount" />
+    <CancelCourseModal v-if="modalType === 'cancel'"
+                       :course="modalCourse"
+                       @close="closeModal"
+                       @cancel-success="handleCourseCancelled" />
+    <DropUserModal v-if="modalType === 'dropUser'"
+                   :course="modalCourse"
+                   @close="closeModal"
+                   @user-changed="updateSignupCount" />
     <EmailUserModal v-if="modalType === 'email'" :course="modalCourse" @close="closeModal" />
 </template>
 
@@ -207,6 +216,9 @@
             }
         },
         methods: {
+            handleCourseCancelled() {
+  this.fetchCourses();
+},
             handleCourseUpdated() {
   this.fetchCourses(); 
 },
@@ -224,6 +236,12 @@
             },
             getCourseById(courseId) {
                 return this.courses.find(c => c.courseSysId === courseId);
+            },
+            updateSignupCount({ courseSysId, delta }) {
+              const course = this.courses.find(c => c.courseSysId === courseSysId);
+              if (course && typeof course.registeredCount === 'number') {
+                course.registeredCount += delta;
+              }
             },
             
             isNearBottom(event) {
