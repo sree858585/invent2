@@ -341,10 +341,13 @@ namespace HIVTraining_Vue.Server.Controllers
                         select new
                         {
                             uc.UserSysId,
+                            uc.Attended,
                             u.FirstName,
                             u.Mi,
                             u.LastName,
                             u.Email,
+                            u.Title,
+                            u.Organization,
                             Role = u.Role.ToString()
                         };
 
@@ -366,7 +369,10 @@ namespace HIVTraining_Vue.Server.Controllers
                 u.UserSysId,
                 FullName = (u.FirstName + " " + (u.Mi ?? "") + " " + u.LastName).Trim(),
                 u.Email,
-                u.Role
+                u.Role,
+                u.Attended,
+                u.Title,
+                u.Organization
             });
 
             return Ok(new { data = result, total });
