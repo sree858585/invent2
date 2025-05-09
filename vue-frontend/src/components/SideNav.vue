@@ -104,6 +104,17 @@
                         <li><router-link to="/system/course-list">Course List</router-link></li>
                     </ul>
                 </li>
+                <li>
+                    <div class="dropdown-header" @click="toggleSection('attendance')">
+                        <span class="icon">📝</span>
+                        <span v-show="isExpanded">Attendance Management</span>
+                        <span class="dropdown-arrow" :class="{ rotated: sections.attendance }">▼</span>
+                    </div>
+                    <ul v-if="sections.attendance && isExpanded" class="dropdown-menu">
+                        <li><router-link to="/attendance/mark">Mark Attendance</router-link></li>
+                        <li><router-link to="/attendance/view">View Attendance</router-link></li>
+                    </ul>
+                </li>
             </ul>
 
             <!-- Hamburger Button -->
@@ -127,6 +138,7 @@
                     system: false 
 
                 },
+                attendance: false,
                 isUserLoggedIn: !!localStorage.getItem("jwtToken"),
             };
         },
