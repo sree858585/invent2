@@ -1,203 +1,410 @@
 ﻿<template>
-    <div class="my-courses-container">
-        <h1>My Courses</h1>
-        <div v-if="loading" class="loading">Loading courses...</div>
-        <div v-else>
-            <div class="tabs">
-                <button v-for="tab in tabs"
-                        :key="tab.label"
-                        :class="{ active: activeTab === tab.key }"
-                        @click="activeTab = tab.key">
-                    {{ tab.label }}
-                </button>
-            </div>
+    <div class="my-learnings-page">
+        <!-- Left-aligned Tabs -->
+        <div class="tab-header">
+            <button :class="{ active: activeTab === 'inProgress' }" @click="activeTab = 'inProgress'">In Progress</button>
+            <button :class="{ active: activeTab === 'completed' }" @click="activeTab = 'completed'">Completed</button>
+        </div>
 
-            <div class="course-section" v-if="activeTab === 'inProgress'">
-                <h2>In Progress</h2>
-                <table class="styled-table">
-                    <thead>
-                        <tr>
-                            <th>Course Title</th>
-                            <th>Training Center</th>
-                            <th>Date</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="course in inProgressCourses" :key="course.title">
-                            <td>{{ course.title }}</td>
-                            <td>{{ course.trainingCenter }}</td>
-                            <td>{{ formatDate(course.date) }}</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+        <div v-if="loading" class="loading">Loading your courses...</div>
+        <div v-else-if="filteredCourses.length === 0" class="no-data">No {{ activeTab }} courses.</div>
 
-            <div class="course-section" v-if="activeTab === 'registered'">
-                <h2>Registered</h2>
-                <table class="styled-table">
-                    <thead>
-                        <tr>
-                            <th>Course Title</th>
-                            <th>Training Center</th>
-                            <th>Date</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="course in registeredCourses" :key="course.title">
-                            <td>{{ course.title }}</td>
-                            <td>{{ course.trainingCenter }}</td>
-                            <td>{{ formatDate(course.date) }}</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+        <div v-else class="course-list">
+            <div v-for="course in filteredCourses"
+                 :key="course.courseSysId"
+                 :class="['course-card', { waitlisted: course.isWaitlisted }]"
+                 role="button"
+                 tabindex="0"
+                 @click="openCourseDetail(course.courseSysId)">
 
-            <div class="course-section" v-if="activeTab === 'completed'">
-                <h2>Completed</h2>
-                <table class="styled-table">
-                    <thead>
-                        <tr>
-                            <th>Course Title</th>
-                            <th>Training Center</th>
-                            <th>Date</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="course in completedCourses" :key="course.title">
-                            <td>{{ course.title }}</td>
-                            <td>{{ course.trainingCenter }}</td>
-                            <td>{{ formatDate(course.date) }}</td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div class="course-image" :style="getImageStyle()" />
+
+                <div class="course-details">
+                    <h3 class="course-title">{{ truncateText(course.subjectTitle, 70) }}</h3>
+                    <p class="course-date"><strong>Date:</strong> {{ formatDate(course.courseDate) }}</p>
+                    <p class="course-time"><strong>Time:</strong> {{ truncateText(course.courseTime || 'N/A', 40) }}</p>
+                    <p class="course-desc">{{ truncateText(course.subjectDescription || 'No description provided.', 120) }}</p>
+                    <div v-if="course.isWaitlisted" class="waitlist-banner">
+                        <span class="icon">⏳</span>
+                        <span class="message">You are currently on the waitlist for this course.</span>
+                    </div>
+                </div>
+
+                <div class="course-actions">
+                    <!-- Progress ring placed above buttons -->
+                    <div v-if="course.status === 1" class="progress-ring">
+                        <svg viewBox="0 0 36 36">
+                            <path class="bg" d="M18 2.0845a 15.9155 15.9155 0 1 1 0 31.831" />
+                            <path class="progress" :stroke-dasharray="`${course.progress}, 100`" d="M18 2.0845a 15.9155 15.9155 0 1 1 0 31.831" />
+                            <text x="18" y="20.35" class="percentage">{{ course.progress }}%</text>
+                        </svg>
+                    </div>
+                    <!-- Status Badge -->
+                    <div v-if="course.status === 2 || course.status === 4" class="status-tag">
+                        {{ course.status === 2 ? "Cancelled" : "Absent" }}
+                    </div>
+
+                    <button v-if="course.status === 1"
+                            class="launch-btn"
+                            @click.stop="launchCourse(course.courseSysId)">
+                        Launch Course
+                    </button>
+
+                    <button v-if="course.status === 1"
+                            class="drop-btn"
+                            @click.stop="openDropConfirm(course.courseSysId)">
+                        Drop
+                    </button>
+
+                    <button v-if="course.status === 3"
+                            class="certificate-btn"
+                            @click.stop>
+                        View Certificate
+                    </button>
+                </div>
             </div>
         </div>
     </div>
+    <DropCourseConfirmModal v-if="showDropModal"
+                            @close="showDropModal = false"
+                            @confirm-drop="confirmDrop" />
+    <UserCourseViewModal v-if="selectedUserCourse"
+                         :course="selectedUserCourse"
+                         @close="selectedUserCourse = null"
+                         @launch-course="launchCourse"
+                         @drop-course="openDropConfirm" />
 </template>
 
-<script>export default {
-        name: "MyCoursesPage",
+<script>import apiClient from "@/axios";
+    import DropCourseConfirmModal from "@/components/Modals/DropCourseConfirmModal.vue";
+    import UserCourseViewModal from "@/components/Modals/UserCourseViewModal.vue";
+
+    export default {
+        components: {
+            DropCourseConfirmModal,
+            UserCourseViewModal
+        },
+        name: "MyLearningsPage",
         data() {
             return {
-                loading: false,
                 activeTab: "inProgress",
-                tabs: [
-                    { label: "In Progress", key: "inProgress" },
-                    { label: "Registered", key: "registered" },
-                    { label: "Completed", key: "completed" },
-                ],
-                inProgressCourses: [
-                    { title: "HIV Basics", trainingCenter: "AIDS Institute", date: "2024-01-10" },
-                    { title: "HIV Advanced", trainingCenter: "AIDS Institute", date: "2024-01-15" },
-                ],
-                registeredCourses: [
-                    { title: "HIV Treatment", trainingCenter: "AIDS Institute", date: "2024-02-05" },
-                ],
-                completedCourses: [
-                    { title: "HIV Awareness", trainingCenter: "AIDS Institute", date: "2023-12-01" },
-                ],
+                loading: false,
+                allCourses: [],
+                showDropModal: false,
+                selectedCourseId: null,
+                selectedUserCourse: null,
+                closeUserCourseModalAfterDrop: false 
+
             };
         },
+        computed: {
+  filteredCourses() {
+    if (this.activeTab === "inProgress") {
+      return this.allCourses
+        .filter(c => c.status === 1)
+        .map(c => {
+          return {
+            ...JSON.parse(JSON.stringify(c)), // deep clone to avoid side effects
+            progress: Math.floor(Math.random() * 50 + 40),
+          };
+        });
+    } else {
+      // Show Attended (3), Cancelled (2), and Absent (4) only
+      return this.allCourses.filter(c => [2, 3, 4].includes(c.status));
+    }
+  }
+},
+       
         methods: {
+            launchCourse(courseId) {
+              console.log("Launching course", courseId);
+              // Your actual logic to open course player or redirect
+            },
+            openDropConfirm(courseId, closeUserModal = false) {
+    this.selectedCourseId = courseId;
+    this.showDropModal = true;
+
+    if (closeUserModal) {
+        this.closeUserCourseModalAfterDrop = true; // 👈 Add this flag
+    }
+},
+            async dropCourse(courseId) {
+                const userId = localStorage.getItem("userId");
+                if (!userId) return;
+
+                try {
+                    await apiClient.post(`/Course/drop`, {
+                        userId,
+                        courseId
+                    });
+                    // Optional: Refetch or remove dropped course from UI
+                    this.fetchUserCourses(); // or manually update allCourses list
+                } catch (err) {
+                    console.error("Failed to drop course:", err);
+                }
+            },
+            async openCourseDetail(courseId) {
+              try {
+                const res = await apiClient.get(`/Course/${courseId}`);
+                console.log("Fetched course detail:", res.data); // ✅ Add this log
+                if (res.data) {
+                  this.selectedUserCourse = res.data;
+                }
+              } catch (err) {
+                console.error("Failed to load full course detail:", err);
+              }
+            },
+            async confirmDrop() {
+                const userId = localStorage.getItem("userId");
+                if (!userId || !this.selectedCourseId) return;
+
+                try {
+                    await apiClient.post(`/Course/drop`, {
+                        userId,
+                        courseId: this.selectedCourseId
+                    });
+                    this.showDropModal = false;
+
+                    // ✅ Close the view modal if drop was initiated from inside it
+                    if (this.closeUserCourseModalAfterDrop) {
+                        this.selectedUserCourse = null;
+                        this.closeUserCourseModalAfterDrop = false;
+                    }
+
+                    this.fetchUserCourses(); // Refresh the course list
+                } catch (err) {
+                    console.error("Failed to drop course:", err);
+                }
+            },
+            async fetchUserCourses() {
+                const userId = localStorage.getItem("userId");
+                if (!userId) return;
+                this.loading = true;
+                try {
+                    const res = await apiClient.get(`/Course/user-courses/${userId}`);
+                    this.allCourses = res.data?.$values || res.data || [];
+                } catch (err) {
+                    console.error("Error fetching user courses:", err);
+                } finally {
+                    this.loading = false;
+                }
+            },
+            getImageStyle() {
+                const imageUrl = require("@/assets/hiv2.png");
+                return {
+                    backgroundImage: `url(${imageUrl})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                    backgroundRepeat: "no-repeat",
+                };
+            },
+            truncateText(text, maxLength) {
+                return text.length > maxLength ? text.slice(0, maxLength) + "..." : text;
+            },
             formatDate(date) {
                 return new Date(date).toLocaleDateString();
             },
         },
+        mounted() {
+            this.fetchUserCourses();
+        },
     };</script>
 
 <style scoped>
-    .my-courses-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        height: 100vh;
-        padding: 20px;
-        box-sizing: border-box;
+    .my-learnings-page {
+        padding: 24px;
         background-color: #f4f6f8;
+        min-height: 100vh;
     }
 
-    h1 {
-        text-align: center;
-        color: #3f51b5;
-        margin-bottom: 20px;
-    }
-
-    .loading {
+    .tab-header {
         display: flex;
-        justify-content: center;
-        align-items: center;
-        font-size: 1.5rem;
-        color: #666;
-        flex-grow: 1;
-    }
-
-    .tabs {
-        display: flex;
-        justify-content: center;
+        justify-content: flex-start;
         gap: 10px;
-        margin-bottom: 20px;
-        width: 100%;
+        margin-bottom: 24px;
     }
 
-        .tabs button {
-            flex: 1;
+        .tab-header button {
             padding: 10px 20px;
+            background-color: #d3d3d3;
+            border-radius: 8px;
+            font-weight: 600;
             border: none;
-            border-radius: 4px;
-            background-color: #e0e0e0;
             cursor: pointer;
-            transition: background-color 0.3s ease;
-            font-weight: bold;
-            text-align: center;
+            color: #333;
+            transition: 0.3s;
         }
 
-            .tabs button.active {
+            .tab-header button.active {
                 background-color: #3f51b5;
                 color: white;
             }
 
-    .course-section {
-        flex-grow: 1;
-        width: 100%;
+    .loading, .no-data {
+        text-align: center;
+        font-size: 1.4rem;
+        color: #666;
+        margin-top: 40px;
+    }
+
+    .course-list {
         display: flex;
         flex-direction: column;
-        align-items: center;
+        gap: 24px;
     }
 
-    h2 {
-        color: #3f51b5;
-        margin-bottom: 20px;
-        text-align: left;
-        width: 90%;
-    }
-
-    .styled-table {
-        width: 95%;
-        border-collapse: collapse;
+    .course-card {
+        display: flex;
         background-color: white;
-        border-radius: 8px;
-        overflow: hidden;
-        box-shadow: 0 8px 12px rgba(0, 0, 0, 0.1);
+        border-radius: 16px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+        padding: 20px;
+        align-items: flex-start;
+        gap: 20px;
+        cursor: pointer; /* 👈 Makes it behave like a button */
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
 
-        .styled-table th,
-        .styled-table td {
-            padding: 15px;
-            text-align: center;
-            border-bottom: 1px solid #ddd;
+        .course-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
         }
 
-        .styled-table th {
-            background-color: #3f51b5;
-            color: white;
-            text-transform: uppercase;
+    .course-image {
+        width: 180px;
+        height: 120px;
+        border-radius: 12px;
+        background-size: cover;
+        background-position: center;
+    }
+
+    .course-details {
+        flex: 1;
+    }
+
+    .course-title {
+        font-size: 1.2rem;
+        font-weight: 700;
+        margin-bottom: 8px;
+    }
+
+    .course-date, .course-time, .course-desc {
+        font-size: 0.95rem;
+        color: #555;
+        margin-bottom: 6px;
+    }
+
+    .course-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        align-items: center;
+        justify-content: center;
+        min-width: 140px;
+    }
+
+    .launch-btn, .drop-btn, .certificate-btn {
+        padding: 8px 16px;
+        border-radius: 20px;
+        border: none;
+        font-weight: bold;
+        font-size: 0.9rem;
+        cursor: pointer;
+        color: white;
+        transition: background-color 0.2s ease;
+    }
+
+    .launch-btn {
+        background-color: #4caf50;
+    }
+
+        .launch-btn:hover {
+            background-color: #388e3c;
         }
 
-        .styled-table tr:nth-child(even) {
-            background-color: #f2f2f2;
+    .drop-btn {
+        background-color: #f44336;
+    }
+
+        .drop-btn:hover {
+            background-color: #c62828;
         }
 
-        .styled-table tr:hover {
-            background-color: #e3f2fd;
+    .certificate-btn {
+        background-color: #3f51b5;
+    }
+
+        .certificate-btn:hover {
+            background-color: #2c3e9f;
+        }
+
+    .progress-ring {
+        width: 60px;
+        height: 60px;
+        margin-bottom: 10px;
+    }
+
+        .progress-ring svg {
+            transform: rotate(-3600deg);
+            width: 100%;
+            height: 100%;
+        }
+
+        .progress-ring .bg {
+            fill: none;
+            stroke: #eee;
+            stroke-width: 3.8;
+        }
+
+        .progress-ring .progress {
+            fill: none;
+            stroke: #3f51b5;
+            stroke-width: 3.8;
+            stroke-linecap: round;
+            transition: stroke-dasharray 0.5s ease;
+        }
+
+        .progress-ring .percentage {
+            fill: #3f51b5;
+            font-size: 10px;
+            text-anchor: middle;
+            dominant-baseline: middle;
+        }
+    .status-tag {
+        background-color: #ffdddd;
+        color: #d32f2f;
+        padding: 6px 14px;
+        border-radius: 14px;
+        font-weight: 600;
+        font-size: 0.85rem;
+        margin-top: 6px;
+        text-align: center;
+    }
+    .course-card.waitlisted {
+        opacity: 0.5;
+        pointer-events: none;
+    }
+    .waitlist-banner {
+        display: flex;
+        align-items: center;
+        background-color: #fff3cd;
+        border-left: 5px solid #ff9800;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        font-weight: 500;
+        color: #5d4037;
+        margin-top: 12px;
+        box-shadow: 0 2px 6px rgba(255, 152, 0, 0.2);
+    }
+
+        .waitlist-banner .icon {
+            font-size: 1.2rem;
+            margin-right: 8px;
+            color: #ff9800;
+        }
+
+        .waitlist-banner .message {
+            flex: 1;
         }
 </style>

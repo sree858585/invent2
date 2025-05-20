@@ -12,6 +12,8 @@ import TrainingTitle from "@/components/TrainingTitle.vue";
 import TrainingCenter from "@/components/TrainingCenter.vue";
 import InstructorManagement from "@/components/InstructorManagement.vue";
 import CourseListManager from "@/components/CourseListManager.vue";
+import MarkAttendance from "@/components/MarkAttendance.vue";
+import ViewAttendance from "@/components/ViewAttendance.vue";
 
 
 const routes = [
@@ -90,6 +92,16 @@ const routes = [
         path: "/system/course-list",
         name: "CourseListManager",
         component: CourseListManager
+    },
+    {
+        path: "/attendance/mark",
+        name: "MarkAttendance",
+        component: MarkAttendance
+    },
+    {
+        path: "/attendance/view",
+        name: "ViewAttendance",
+        component: ViewAttendance
     },
     {
         path: "/",

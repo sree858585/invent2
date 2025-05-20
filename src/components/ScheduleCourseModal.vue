@@ -11,7 +11,9 @@
                             <label>Training Center *</label>
                             <select v-model="form.trainingCenter" required>
                                 <option value="">-- Select --</option>
-                                <option v-for="center in lookupData.trainingCenters" :key="center.siteSysId" :value="center.siteSysId">
+                                <option v-for="center in lookupData.trainingCenters"
+                                        :key="center.siteSysId"
+                                        :value="center.siteSysId">
                                     {{ center.siteName }}
                                 </option>
                             </select>
@@ -21,7 +23,9 @@
                             <label>Region *</label>
                             <select v-model="form.region" required>
                                 <option value="">-- Select --</option>
-                                <option v-for="region in lookupData.regions" :key="region.code" :value="region.code">
+                                <option v-for="region in lookupData.regions"
+                                        :key="region.code"
+                                        :value="region.code">
                                     {{ region.value }}
                                 </option>
                             </select>
@@ -31,7 +35,9 @@
                             <label>Category *</label>
                             <select v-model="form.category" required>
                                 <option value="">-- Select --</option>
-                                <option v-for="category in lookupData.categories" :key="category.code" :value="category.code">
+                                <option v-for="category in lookupData.categories"
+                                        :key="category.code"
+                                        :value="category.code">
                                     {{ category.value }}
                                 </option>
                             </select>
@@ -41,7 +47,9 @@
                             <label>Course Title *</label>
                             <select v-model="form.courseTitle" required>
                                 <option value="">-- Select --</option>
-                                <option v-for="subject in filteredSubjects" :key="subject.subjectSysId" :value="subject.subjectSysId">
+                                <option v-for="subject in filteredSubjects"
+                                        :key="subject.subjectSysId"
+                                        :value="subject.subjectSysId">
                                     {{ subject.courseTitle }}
                                 </option>
                             </select>
@@ -51,7 +59,9 @@
                             <label>1st Instructor</label>
                             <select v-model="form.instructor1">
                                 <option value="">-- Select --</option>
-                                <option v-for="instructor in lookupData.instructors" :key="instructor.instructorSysId" :value="instructor.instructorSysId">
+                                <option v-for="instructor in lookupData.instructors"
+                                        :key="instructor.instructorSysId"
+                                        :value="instructor.instructorSysId">
                                     {{ instructor.name }}
                                 </option>
                             </select>
@@ -61,7 +71,9 @@
                             <label>2nd Instructor</label>
                             <select v-model="form.instructor2">
                                 <option value="">-- Select --</option>
-                                <option v-for="instructor in lookupData.instructors" :key="instructor.instructorSysId" :value="instructor.instructorSysId">
+                                <option v-for="instructor in lookupData.instructors"
+                                        :key="instructor.instructorSysId"
+                                        :value="instructor.instructorSysId">
                                     {{ instructor.name }}
                                 </option>
                             </select>
@@ -109,7 +121,9 @@
                             <label>Format *</label>
                             <select v-model="form.format" required>
                                 <option value="">-- Select --</option>
-                                <option v-for="format in lookupData.formats" :key="format.code" :value="format.code">
+                                <option v-for="format in lookupData.formats"
+                                        :key="format.code"
+                                        :value="format.code">
                                     {{ format.value }}
                                 </option>
                             </select>
@@ -117,13 +131,79 @@
                     </div>
                 </div>
 
-                <!-- Full-width Inputs -->
+                <!-- Multi-session toggle -->
+                <div class="form-column-full">
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" v-model="form.isMultiSession" />
+                            Multi-day / Multi-session Course
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Multi-session entries -->
+                <div class="form-column-full" v-if="form.isMultiSession">
+                    <h4>Course Sessions</h4>
+
+                    <div v-for="(session, index) in form.sessions"
+                         :key="index"
+                         class="session-group">
+
+                        <div class="form-group">
+                            <label>Session {{ index + 1 }} Date</label>
+                            <input type="date" v-model="session.date" required />
+                        </div>
+
+                        <div class="form-group">
+                            <label>Start Time</label>
+                            <input type="time" v-model="session.startTime" required />
+                        </div>
+
+                        <div class="form-group">
+                            <label>End Time</label>
+                            <input type="time" v-model="session.endTime" required />
+                        </div>
+
+                        <div class="form-group">
+                            <label>Session URL</label>
+                            <input type="url" v-model="session.url" placeholder="Session URL" />
+                        </div>
+
+                        <!-- ❌ Remove Session Button -->
+                        <div class="form-group" style="align-self: flex-end;">
+                            <button v-if="form.sessions.length > 1"
+                                    type="button"
+                                    class="btn-secondary"
+                                    @click="removeSession(index)">
+                                ❌ Remove
+                            </button>
+                        </div>
+
+                        <!-- ➕ Add Session Button -->
+                        <div class="form-group" v-if="index === form.sessions.length - 1 && form.sessions.length < 4">
+                            <button type="button" class="btn-secondary" @click="addSession">
+                                ➕ Add Session
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Automatically show 1st session block when checkbox is checked -->
+                    <div v-if="form.sessions.length === 0">
+                        <button type="button" class="btn-secondary" @click="addSession">
+                            ➕ Add First Session
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Remaining fields -->
                 <div class="form-column-full">
                     <div class="form-group">
                         <label># of Deliverables *</label>
                         <select v-model="form.deliverables" required>
                             <option value="">-- Select --</option>
-                            <option v-for="deliverable in lookupData.deliverables" :key="deliverable.id" :value="deliverable.id">
+                            <option v-for="deliverable in lookupData.deliverables"
+                                    :key="deliverable.id"
+                                    :value="deliverable.id">
                                 {{ deliverable.value }}
                             </option>
                         </select>
@@ -138,7 +218,10 @@
                             <input type="radio" id="coe" value="COE" v-model="form.fundingType" />
                             <label for="coe">COE</label>
 
-                            <input type="radio" id="others" value="Others" v-model="form.fundingType" />
+                            <input type="radio"
+                                   id="others"
+                                   value="Others"
+                                   v-model="form.fundingType" />
                             <label for="others">Others</label>
                         </div>
                     </div>
@@ -157,12 +240,15 @@
                 <!-- Buttons -->
                 <div class="button-group">
                     <button type="submit" class="btn-primary">Submit</button>
-                    <button type="button" class="btn-secondary" @click="closeModal">Cancel</button>
+                    <button type="button" class="btn-secondary" @click="closeModal">
+                        Cancel
+                    </button>
                 </div>
             </form>
         </div>
     </div>
 </template>
+
 
 <script>import apiClient from "@/axios.js";
 
@@ -171,23 +257,30 @@ export default {
   props: { isOpen: Boolean },
   emits: ["close", "submit"],
   data() {
-    return {
-      form: {
-        trainingCenter: "", region: "", category: "", courseTitle: "", instructor1: "",
-        instructor2: "", startDate: "", endDate: "", startTime: "", endTime: "",
-        regDeadline: "", maxSeats: "", trainingLocation: "", deliverables: "",
-        format: "", fundingType: "", hideCourse: false, courseSchedule: ""
-      },
-      lookupData: {
-        trainingCenters: [], regions: [], categories: [], instructors: [],
-        deliverables: [], formats: []
-      },
-      filteredSubjects: []
-    };
-  },
+  return {
+    form: {
+      trainingCenter: "", region: "", category: "", courseTitle: "", instructor1: "",
+      instructor2: "", startDate: "", endDate: "", startTime: "", endTime: "",
+      regDeadline: "", maxSeats: "", trainingLocation: "", deliverables: "",
+      format: "", fundingType: "", hideCourse: false, courseSchedule: "",
+      isMultiSession: false,
+      sessions: [
+        
+      ]
+    }, // <-- make sure this closing brace is correct
+    lookupData: {
+      trainingCenters: [], regions: [], categories: [], instructors: [],
+      deliverables: [], formats: []
+    },
+    filteredSubjects: []
+  };
+},
   watch: {
     isOpen(newVal) {
-      if (newVal) this.fetchLookupData();
+    if (newVal) {
+      this.resetForm();
+      this.fetchLookupData();
+    }
     },
     'form.category'(newCategory) {
       if (newCategory) {
@@ -199,6 +292,25 @@ export default {
     }
   },
   methods: {
+      removeSession(index) {
+  this.form.sessions.splice(index, 1);
+},
+      resetForm() {
+    this.form = {
+      trainingCenter: "", region: "", category: "", courseTitle: "", instructor1: "",
+      instructor2: "", startDate: "", endDate: "", startTime: "", endTime: "",
+      regDeadline: "", maxSeats: "", trainingLocation: "", deliverables: "",
+      format: "", fundingType: "", hideCourse: false, courseSchedule: "",
+      isMultiSession: false,
+      sessions: []
+    };
+    this.filteredSubjects = [];
+  },
+      addSession() {
+  if (this.form.sessions.length < 4) {
+    this.form.sessions.push({ date: "", startTime: "", endTime: "", url: "" });
+  }
+},
     async fetchLookupData() {
       try {
         const response = await apiClient.get("/CreateCourse/lookup");
@@ -227,54 +339,68 @@ export default {
       this.$emit("close");
     },
     async submitCourse() {
-      try {
-        const courseTimeBegin = this.form.startDate && this.form.startTime
-          ? new Date(`${this.form.startDate}T${this.form.startTime}:00Z`).toISOString()
-          : null;
+  try {
+    const courseTimeBegin = this.form.startDate && this.form.startTime
+      ? new Date(`${this.form.startDate}T${this.form.startTime}:00Z`).toISOString()
+      : null;
 
-        const courseTimeEnd = this.form.endDate && this.form.endTime
-          ? new Date(`${this.form.endDate}T${this.form.endTime}:00Z`).toISOString()
-          : null;
+    const courseTimeEnd = this.form.endDate && this.form.endTime
+      ? new Date(`${this.form.endDate}T${this.form.endTime}:00Z`).toISOString()
+      : null;
 
-        const courseData = {
-          siteSysId: this.form.trainingCenter,
-          subjectSysId: this.form.courseTitle,
-          courseDate: this.form.startDate ? new Date(this.form.startDate).toISOString() : null,
-          endDate: this.form.endDate ? new Date(this.form.endDate).toISOString() : null,
-          courseTimeBegin,
-          courseTimeEnd,
-          regDeadLine: this.form.regDeadline ? new Date(this.form.regDeadline).toISOString() : null,
-          instructor1: this.form.instructor1 || null,
-          instructor2: this.form.instructor2 || null,
-          trainingLocation: this.form.trainingLocation,
-          deliverable: this.form.deliverables,
-          maxSeats: this.form.maxSeats,
-          format: this.form.format,
-          region: this.form.region,
-          information: this.form.courseSchedule,
-          rtc: this.form.fundingType === "RTC",
-          coe: this.form.fundingType === "COE",
-          otherFund: this.form.fundingType === "Others",
-          hidden: this.form.hideCourse,
-          delivered: false,
-          cancelled: false,
-          approve: null,
-          approveDt: null,
-          disapprove: null,
-          disapproveDt: null,
-          disApprvNotes: null,
-          dateEntered: new Date().toISOString(),
-          dateModified: new Date().toISOString()
-        };
+    const course = {
+      siteSysId: this.form.trainingCenter,
+      subjectSysId: this.form.courseTitle,
+      courseDate: this.form.startDate ? new Date(this.form.startDate).toISOString() : null,
+      endDate: this.form.endDate ? new Date(this.form.endDate).toISOString() : null,
+      courseTimeBegin,
+      courseTimeEnd,
+      regDeadLine: this.form.regDeadline ? new Date(this.form.regDeadline).toISOString() : null,
+      instructor1: this.form.instructor1 || null,
+      instructor2: this.form.instructor2 || null,
+      trainingLocation: this.form.trainingLocation,
+      deliverable: this.form.deliverables,
+      maxSeats: this.form.maxSeats,
+      format: this.form.format,
+      region: this.form.region,
+      information: this.form.courseSchedule,
+      rtc: this.form.fundingType === "RTC",
+      coe: this.form.fundingType === "COE",
+      otherFund: this.form.fundingType === "Others",
+      hidden: this.form.hideCourse,
+      isMultiSession: this.form.isMultiSession,
+      delivered: false,
+      cancelled: false,
+      approve: null,
+      approveDt: null,
+      disapprove: null,
+      disapproveDt: null,
+      disApprvNotes: null,
+      dateEntered: new Date().toISOString(),
+      dateModified: new Date().toISOString()
+    };
 
-        await apiClient.post("/CreateCourse/schedule", courseData);
-        alert("Course scheduled successfully!");
-        this.closeModal();
-      } catch (error) {
-        console.error("Error scheduling course:", error);
-        alert("Failed to schedule course. Please try again.");
-      }
-    }
+    // 👇 Wrap both course and sessions together
+    const requestPayload = {
+      course,
+      sessions: this.form.isMultiSession
+        ? this.form.sessions.map(s => ({
+            sessionDate: s.date,
+            startTime: s.startTime,
+            endTime: s.endTime,
+            sessionUrl: s.url
+          }))
+        : []
+    };
+
+    await apiClient.post("/CreateCourse/schedule", requestPayload);
+    alert("Course scheduled successfully!");
+    this.closeModal();
+  } catch (error) {
+    console.error("Error scheduling course:", error);
+    alert("Failed to schedule course. Please try again.");
+  }
+}
   }
 };</script>
 
@@ -450,5 +576,44 @@ export default {
         .btn-secondary {
             width: 100%;
         }
+    }
+    .session-group {
+        border: 1px solid #ccc;
+        padding: 16px;
+        margin-bottom: 16px;
+        border-radius: 12px;
+        background-color: #f9f9f9;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+    }
+
+        .session-group .form-group {
+            flex: 1 1 45%;
+        }
+
+    input[type="checkbox"],
+    input[type="radio"] {
+        accent-color: #3f51b5;
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+    }
+
+        input[type="checkbox"] + label,
+        input[type="radio"] + label {
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+    .form-group > label > input[type="checkbox"] {
+        margin-right: 10px;
+    }
+
+    /* Make radio buttons inline */
+    .form-group input[type="radio"] {
+        margin-left: 10px;
+        margin-right: 5px;
     }
 </style>

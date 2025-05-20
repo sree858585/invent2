@@ -37,20 +37,14 @@
                 </li>
 
                 <!-- Dropdown Items Template -->
-                <li v-if="isUserLoggedIn">
-                    <div class="dropdown-header" @click="toggleSection('myCourses')">
+                <li v-if="isUserLoggedIn && isStandardUser">
+                    <router-link to="/my-courses/registered">
                         <span class="icon">📋</span>
-                        <span v-show="isExpanded">My Courses</span>
-                        <span class="dropdown-arrow" :class="{ rotated: sections.myCourses }">▼</span>
-                    </div>
-                    <ul v-if="sections.myCourses && isExpanded" class="dropdown-menu">
-                        <li><router-link to="/my-courses/in-progress">In Progress</router-link></li>
-                        <li><router-link to="/my-courses/registered">Registered</router-link></li>
-                        <li><router-link to="/my-courses/completed">Completed</router-link></li>
-                    </ul>
+                        <span v-show="isExpanded">My Learnings</span>
+                    </router-link>
                 </li>
 
-                <li v-if="isUserLoggedIn">
+                <li v-if="isUserLoggedIn && isStandardUser">
                     <router-link to="/my-certificates">
                         <span class="icon">📜</span>
                         <span v-show="isExpanded">My Certificates</span>
@@ -59,24 +53,15 @@
                 <li>
                     <router-link to="/course-list-page">
                         <span class="icon">🗂️</span>
-                        <span v-show="isExpanded">Courses</span>
+                        <span v-show="isExpanded">Upcoming Courses</span>
                     </router-link>
                 </li>
 
                 <li>
-                    <div class="dropdown-header" @click="toggleSection('courses')">
+                    <router-link to="/course-list/all">
                         <span class="icon">📚</span>
-                        <span v-show="isExpanded">Course List</span>
-                        <span class="dropdown-arrow" :class="{ rotated: sections.courses }">▼</span>
-                    </div>
-                    <ul v-if="sections.courses && isExpanded" class="dropdown-menu">
-                        <li><router-link to="/course-list/1">In Person</router-link></li>
-                        <li><router-link to="/course-list/2">Online</router-link></li>
-                        <li><router-link to="/course-list/3">Archived Webinars</router-link></li>
-                        <li><router-link to="/course-list/4">Live Webinars</router-link></li>
-                        <li><router-link to="/course-list/5">Hybrid</router-link></li>
-                        <li><router-link to="/course-list/6">New</router-link></li>
-                    </ul>
+                        <span v-show="isExpanded">Courses</span>
+                    </router-link>
                 </li>
 
                 <li>
@@ -105,7 +90,8 @@
                     </router-link>
                 </li>
 
-                <li>
+                <!-- ✅ SYSTEM MANAGEMENT: Only for Admin/Manager -->
+                <li v-if="isUserLoggedIn && isAdminOrManager">
                     <div class="dropdown-header" @click="toggleSection('system')">
                         <span class="icon">⚙️</span>
                         <span v-show="isExpanded">System Management</span>
@@ -118,6 +104,23 @@
                         <li><router-link to="/system/instructor-management">Instructor Management</router-link></li>
                         <li><router-link to="/system/course-list">Course List</router-link></li>
                     </ul>
+                </li>
+
+                <!-- ✅ ATTENDANCE MANAGEMENT: Only for Admin/Manager -->
+                <li v-if="isUserLoggedIn && isAdminOrManager">
+                    <div class="dropdown-header" @click="toggleSection('attendance')">
+                        <span class="icon">📝</span>
+                        <span v-show="isExpanded">Attendance Management</span>
+                        <span class="dropdown-arrow" :class="{ rotated: sections.attendance }">▼</span>
+                    </div>
+                    <ul v-if="sections.attendance && isExpanded" class="dropdown-menu">
+                        <li><router-link to="/attendance/mark">Mark Attendance</router-link></li>
+                        <li><router-link to="/attendance/view">View Attendance</router-link></li>
+                    </ul>
+                </li>
+                <!-- TEMP DEBUG: REMOVE AFTER VERIFICATION -->
+                <li style="color: yellow; font-size: 14px; padding: 10px;">
+                    Role: {{ userRole }} 
                 </li>
             </ul>
 
@@ -142,9 +145,20 @@
                     system: false 
 
                 },
+                userRole: localStorage.getItem("userRole") || "",
+                attendance: false,
                 isUserLoggedIn: !!localStorage.getItem("jwtToken"),
             };
         },
+        computed: {
+  isAdminOrManager() {
+    return this.userRole === "Admin" || this.userRole === "Manager";
+  },
+  isStandardUser() {
+    return this.userRole === "User";
+  }
+},
+        
         mounted() {
             eventBus.on("auth-change", this.refreshLoginState);
         },
@@ -178,18 +192,44 @@
                 window.location.reload();
             },
             refreshLoginState() {
-                this.isUserLoggedIn = !!localStorage.getItem("jwtToken");
-            },
+    this.isUserLoggedIn = !!localStorage.getItem("jwtToken");
+    this.userRole = localStorage.getItem("userRole") || "";
+    this.$forceUpdate();
+},
         },
     };</script>
 
 <style scoped>
     /* ===== Container ===== */
+    /* ===== Container ===== */
     .sidenav-container {
-        display: flex;
         height: 100vh;
-        background: #f4f6f9;
+        width: 260px; /* fixed width */
+        background: #6e528d;
+        overflow: hidden; /* Prevent outer scroll bar */
+        display: flex;
+        flex-direction: column;
+        border-radius: 0 10px 10px 0; /* Only top-left rounded */
     }
+
+    /* ===== Sidebar Core ===== */
+    nav {
+        flex: 1;
+        overflow-y: auto; /* enables internal scroll */
+        padding-bottom: 20px;
+        display: flex;
+        flex-direction: column;
+    }
+
+        /* Optional: If the background flickers near the bottom */
+        nav::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        nav::-webkit-scrollbar-thumb {
+            background-color: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
 
     /* ===== Hamburger Toggle ===== */
     .hamburger-button {

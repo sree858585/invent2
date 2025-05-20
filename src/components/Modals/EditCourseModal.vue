@@ -112,6 +112,51 @@
                                 </option>
                             </select>
                         </div>
+
+                    </div>
+                    <!-- Multi-session toggle -->
+                    <div class="form-column-full">
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" v-model="form.isMultiSession" />
+                                Multi-day / Multi-session Course
+                            </label>
+                        </div>
+                    </div>
+                    <!-- Multi-session entries -->
+                    <div class="form-column-full" v-if="form.isMultiSession">
+                        <h4>Course Sessions</h4>
+                        <div v-for="(session, index) in form.sessions"
+                             :key="index"
+                             class="session-group"
+                             style="border: 1px solid #ddd; padding: 16px; border-radius: 10px; margin-bottom: 16px; background-color: #fafafa">
+                            <div class="form-group">
+                                <label>Session {{ index + 1 }} Date</label>
+                                <input type="date" v-model="session.date" required />
+                            </div>
+                            <div class="form-group">
+                                <label>Start Time</label>
+                                <input type="time" v-model="session.startTime" required />
+                            </div>
+                            <div class="form-group">
+                                <label>End Time</label>
+                                <input type="time" v-model="session.endTime" required />
+                            </div>
+                            <div class="form-group">
+                                <label>Session URL</label>
+                                <input type="url" v-model="session.url" placeholder="Session URL" />
+                            </div>
+
+                            <div class="form-group" style="align-self: flex-end" v-if="form.sessions.length > 1">
+                                <button type="button" class="btn-secondary" @click="removeSession(index)">❌ Remove</button>
+                            </div>
+
+                            <div class="form-group" v-if="index === form.sessions.length - 1 && form.sessions.length < 4">
+                                <button type="button" class="btn-secondary" @click="addSession">
+                                    ➕ Add Session
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -166,34 +211,49 @@
         props: ['course'],
         data() {
             return {
+                originalCourse: null,
                 form: {
                     trainingCenter: '', region: '', category: '', courseTitle: '', instructor1: '',
                     instructor2: '', startDate: '', endDate: '', startTime: '', endTime: '',
                     regDeadline: '', maxSeats: '', trainingLocation: '', deliverables: '',
-                    format: '', fundingType: '', hideCourse: false, courseSchedule: ''
+                    format: '', fundingType: '', hideCourse: false, courseSchedule: '',
+                    isMultiSession: false,
+                    sessions: [{ date: '', startTime: '', endTime: '', url: '' }]
                 },
                 lookupData: {
                     trainingCenters: [], regions: [], categories: [], subjects: [], instructors: [], deliverables: [], formats: []
                 },
-                filteredSubjects: [] 
-
+                filteredSubjects: []
             }
         },
         async mounted() {
             await this.fetchLookupData();
-
-            if (this.course) {
-                this.populateForm();
+            const courseId = this.course.courseSysId;
+            try {
+                const res = await apiClient.get(`/CourseAdmin/courseWithSessions/${courseId}`);
+                const courseWithSessions = res.data;
+                this.originalCourse = courseWithSessions;
+                this.populateForm(courseWithSessions);
+            } catch (err) {
+                console.error("❌ Failed to load full course details", err);
+                alert("Failed to load course details.");
             }
         },
         methods: {
-            
+            addSession() {
+                if (this.form.sessions.length < 4) {
+                    this.form.sessions.push({ date: '', startTime: '', endTime: '', url: '' });
+                }
+            },
+            removeSession(index) {
+                if (this.form.sessions.length > 1) {
+                    this.form.sessions.splice(index, 1);
+                }
+            },
             async fetchSubjectsByCategory(categoryCode) {
                 try {
                     const res = await apiClient.get(`/CreateCourse/subjectsByCategory/${categoryCode}`);
-                    // 🔥 FIX: If the response has $values, extract it:
                     this.filteredSubjects = res.data?.$values || res.data || [];
-                    console.log("✅ Filtered Subjects Set:", this.filteredSubjects);
                 } catch (err) {
                     console.error("Failed to load subjects by category:", err);
                     this.filteredSubjects = [];
@@ -211,32 +271,21 @@
                         deliverables: res.data.deliverables || [],
                         formats: res.data.formats || []
                     };
-                    console.log("Subjects raw from backend:", res.data.subjects);
-
-                    this.populateForm();
-
                 } catch (err) {
                     console.error("❌ Failed to fetch lookup data", err);
                 }
             },
-            async populateForm() {
-                const c = this.course;
-
+            async populateForm(course) {
+                const c = course;
                 const subject = this.lookupData.subjects.find(s => s.subjectSysId === c.subjectSysId);
                 const derivedCategory = subject ? String(subject.category) : '';
 
                 this.form.trainingCenter = String(c.siteSysId);
                 this.form.region = c.region ? String(c.region) : '';
                 this.form.category = derivedCategory;
-
-                // 👇 Await fetching subjects for the category before assigning course title
                 await this.fetchSubjectsByCategory(derivedCategory);
-                // Small delay to ensure DOM updates are completed before binding
-                setTimeout(() => {
-                    this.form.courseTitle = c.subjectSysId ? String(c.subjectSysId) : '';
-                }, 0);
-                this.form.courseTitle = c.subjectSysId ? String(c.subjectSysId) : '';
 
+                this.form.courseTitle = c.subjectSysId ? String(c.subjectSysId) : '';
                 this.form.instructor1 = c.instructor1 ? String(c.instructor1) : '';
                 this.form.instructor2 = c.instructor2 ? String(c.instructor2) : '';
                 this.form.startDate = c.courseDate?.split('T')[0];
@@ -251,11 +300,22 @@
                 this.form.fundingType = c.rtc ? 'RTC' : c.coe ? 'COE' : 'Others';
                 this.form.hideCourse = c.hidden;
                 this.form.courseSchedule = c.information;
+                this.form.isMultiSession = c.isMultiSession || false;
+                const rawSessions = c.sessions?.$values || [];
+
+                this.form.sessions = rawSessions.length
+                    ? rawSessions.map(s => ({
+                        date: s.sessionDate?.split("T")[0] || '',
+                        startTime: s.startTime?.substring(0, 5) || '',
+                        endTime: s.endTime?.substring(0, 5) || '',
+                        url: s.sessionUrl || ''
+                    }))
+                    : [{ date: '', startTime: '', endTime: '', url: '' }];
             },
             async submitUpdate() {
                 try {
-                    const payload = {
-                        ...this.course,
+                    const coursePayload = {
+                        ...this.originalCourse,
                         siteSysId: this.form.trainingCenter,
                         region: this.form.region,
                         subjectSysId: this.form.courseTitle,
@@ -275,12 +335,24 @@
                         otherFund: this.form.fundingType === 'Others',
                         hidden: this.form.hideCourse,
                         information: this.form.courseSchedule,
+                        isMultiSession: this.form.isMultiSession,
                         dateModified: new Date().toISOString()
                     };
-                    const courseSysId = this.course.courseSysId;
-                    await apiClient.put(`/CourseAdmin/update/${courseSysId}`, payload);
+                    const requestPayload = {
+                        course: coursePayload,
+                        sessions: this.form.isMultiSession
+                            ? this.form.sessions.map(s => ({
+                                sessionDate: s.date,
+                                startTime: s.startTime,
+                                endTime: s.endTime,
+                                sessionUrl: s.url
+                            }))
+                            : []
+                    };
+                    const courseSysId = this.originalCourse.courseSysId;
+                    await apiClient.put(`/CourseAdmin/update/${courseSysId}`, requestPayload);
                     alert("Course updated successfully!");
-                    this.$emit("updated"); //  Emit this
+                    this.$emit("updated");
                     this.$emit("close");
                 } catch (err) {
                     console.error("Error updating course:", err);
@@ -296,7 +368,7 @@
                     this.filteredSubjects = [];
                 }
             }
-        },
+        }
     };</script>
 
 <style scoped>
