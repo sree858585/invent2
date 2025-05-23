@@ -1,4 +1,5 @@
 ﻿using HIVTraining_Vue.Data;
+using HIVTraining_Vue.Server.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -17,10 +18,10 @@ namespace HIVTraining_Vue.Server.Controllers
     public class LoginController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
-        private readonly UserManager<IdentityUser> _userManager;
-        private readonly SignInManager<IdentityUser> _signInManager;
+        private readonly UserManager<ApplicationUser> _userManager;
+        private readonly SignInManager<ApplicationUser> _signInManager;
 
-        public LoginController(UserManager<IdentityUser> userManager, SignInManager<IdentityUser> signInManager, ApplicationDbContext context)
+        public LoginController(UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager, ApplicationDbContext context)
         {
             _context = context;
             _userManager = userManager;
@@ -37,7 +38,6 @@ namespace HIVTraining_Vue.Server.Controllers
                 return Unauthorized(new { message = "Invalid email or password" });
             }
 
-            // 🔹 Fetch user details from Users table (using Email)
             var userDetails = await _context.Users
                 .Where(u => u.Email == model.Email)
                 .FirstOrDefaultAsync();
@@ -47,21 +47,24 @@ namespace HIVTraining_Vue.Server.Controllers
                 return Unauthorized(new { message = "User details not found" });
             }
 
-            // 🔹 Generate JWT Token
+            // 🔥 Get user roles from Identity
+            var roles = await _userManager.GetRolesAsync(user);
+            var role = roles.FirstOrDefault() ?? "User"; // fallback role
+
             var token = GenerateJwtToken(user);
 
-            // ✅ Return correct UserId (GUID) instead of UserSysID
             return Ok(new
             {
-                userId = userDetails.UserId.ToString(),  // 🔥 Return GUID as a string
+                userId = userDetails.UserId.ToString(),
                 firstName = userDetails.FirstName,
                 lastName = userDetails.LastName,
                 email = user.Email,
-                token = token
+                token = token,
+                role = role 
             });
         }
 
-        private string GenerateJwtToken(IdentityUser user)
+        private string GenerateJwtToken(ApplicationUser user)
         {
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("Your_Secret_Key_Here"));
             var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

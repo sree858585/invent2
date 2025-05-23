@@ -18,9 +18,9 @@ namespace HIVTraining_Vue.Server.Controllers
     public class RegistrationController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
-        private readonly UserManager<IdentityUser> _userManager;
+        private readonly UserManager<ApplicationUser> _userManager;
 
-        public RegistrationController(ApplicationDbContext context, UserManager<IdentityUser> userManager)
+        public RegistrationController(ApplicationDbContext context, UserManager<ApplicationUser> userManager)
         {
             _context = context;
             _userManager = userManager;
@@ -69,7 +69,7 @@ namespace HIVTraining_Vue.Server.Controllers
                 }
 
                 // ✅ Create Identity User
-                var identityUser = new IdentityUser
+                var applicationUser = new ApplicationUser
                 {
                     UserName = email,
                     NormalizedUserName = email.ToUpper(),
@@ -79,22 +79,33 @@ namespace HIVTraining_Vue.Server.Controllers
                     EmailConfirmed = true  // ✅ Auto-confirm email to allow login
                 };
 
-                var result = await _userManager.CreateAsync(identityUser, password);
+                var result = await _userManager.CreateAsync(applicationUser, password);
                 if (!result.Succeeded)
                 {
                     return BadRequest(new { message = "Failed to create user in Identity", errors = result.Errors });
                 }
 
+                try
+                {
+                    await _userManager.AddToRoleAsync(applicationUser, "User");
+
+                }
+                catch (Exception ex)
+                {
+                    return StatusCode(500, $"Error saving user-role mapping: {ex.Message} {ex.InnerException?.Message}");
+                }
+
+
                 // ✅ Store Security Question & Answer in Identity Claims
-                await _userManager.AddClaimAsync(identityUser, new Claim("PasswordRecoveryQuestion", passwordRecoveryQuestion));
-                await _userManager.AddClaimAsync(identityUser, new Claim("PasswordRecoveryAnswer", EncryptData(passwordRecoveryAnswer)));
+                await _userManager.AddClaimAsync(applicationUser, new Claim("PasswordRecoveryQuestion", passwordRecoveryQuestion));
+                await _userManager.AddClaimAsync(applicationUser, new Claim("PasswordRecoveryAnswer", EncryptData(passwordRecoveryAnswer)));
 
                 try
                 {
                     // ✅ Insert into dbo.Users (Handled Missing Properties)
                     var newUser = new User
                     {
-                        UserId = Guid.Parse(identityUser.Id),
+                        UserId = Guid.Parse(applicationUser.Id),
                         FirstName = GetJsonProperty(userData, "firstName"),
                         LastName = GetJsonProperty(userData, "lastName"),
                         Email = email,
@@ -124,7 +135,7 @@ namespace HIVTraining_Vue.Server.Controllers
                 catch (Exception ex)
                 {
                     // ❗ If inserting into dbo.Users fails, delete from Identity
-                    await _userManager.DeleteAsync(identityUser);
+                    await _userManager.DeleteAsync(applicationUser);
                     return StatusCode(500, $"Failed to save user details in dbo.Users. Rolling back. Error: {ex.Message}");
                 }
 
