@@ -2,120 +2,119 @@
     <div class="sidenav-container">
         <!-- Side Navigation -->
         <nav :class="{ expanded: isExpanded, collapsed: !isExpanded }">
-            <div class="profile-section">
-                <!-- If user is logged in, show profile -->
-                <div v-if="isUserLoggedIn" class="profile-header" @click="toggleProfileDropdown">
+            <div class="sidenav-scrollable">
+                <!-- User Dashboard Section -->
+                <div v-if="isUserLoggedIn && isStandardUser" class="dropdown-header" @click="toggleSection('user')">
                     <span class="icon">👤</span>
-                    <span>My Profile</span>
-                    <span class="dropdown-arrow">▼</span>
+                    <span v-show="isExpanded">My Dashboard</span>
+                    <span class="dropdown-arrow" :class="{ rotated: sections.user }">▼</span>
                 </div>
+                <ul v-if="sections.user && isExpanded" class="dropdown-menu">
+                    <li><router-link to="/my-courses/registered">📋 My Learnings</router-link></li>
+                    <li><router-link to="/my-certificates">📜 My Certificates</router-link></li>
+                    <li><a href="#" @click.prevent="navigateToProfile">👤 View Profile</a></li>
+                    <li><a href="#" @click="handleLogout">🔓 Logout</a></li>
+                </ul>
 
-                <!-- If user is not logged in, show login button -->
-                <button v-else class="login-btn" @click="$emit('show-login')">
-                    <span class="icon">🔒</span>
-                    <span>Login/Register</span>
-                </button>
-
-                <!-- Profile dropdown -->
-                <ul v-if="showProfileDropdown && isUserLoggedIn">
+                <!-- Navigation Items -->
+                <ul class="nav-items">
                     <li>
-                        <a href="#" @click.prevent="navigateToProfile">View Profile</a>
+                        <router-link to="/home">
+                            <span class="icon">🏠</span>
+                            <span v-show="isExpanded">Home</span>
+                        </router-link>
+                    </li>
+
+                    <li>
+                        <router-link to="/course-list-page">
+                            <span class="icon">🗂️</span>
+                            <span v-show="isExpanded">Upcoming Courses</span>
+                        </router-link>
+                    </li>
+
+                    <li>
+                        <router-link to="/course-list/all">
+                            <span class="icon">📚</span>
+                            <span v-show="isExpanded">Courses</span>
+                        </router-link>
+                    </li>
+
+                    <li>
+                        <router-link to="/peer-certification">
+                            <span class="icon">🏅</span>
+                            <span v-show="isExpanded">Peer Certification</span>
+                        </router-link>
                     </li>
                     <li>
-                        <a href="#" @click="handleLogout">Logout</a>
+                        <router-link to="/trending">
+                            <span class="icon">🔥</span>
+                            <span v-show="isExpanded">Trending</span>
+                        </router-link>
                     </li>
+                    <li>
+                        <router-link to="/training-centers">
+                            <span class="icon">👥</span>
+                            <span v-show="isExpanded">Training Centers</span>
+                        </router-link>
+                    </li>
+
+                    <li>
+                        <router-link to="/course-module">
+                            <span class="icon">📘</span>
+                            <span v-show="isExpanded">Course Module</span>
+                        </router-link>
+                    </li>
+
+                    <!-- ✅ SYSTEM MANAGEMENT: Only for Admin/Manager -->
+                    <li v-if="isUserLoggedIn && isAdminOrManager">
+                        <div class="dropdown-header" @click="toggleSection('system')">
+                            <span class="icon">⚙️</span>
+                            <span v-show="isExpanded">System Management</span>
+                            <span class="dropdown-arrow" :class="{ rotated: sections.system }">▼</span>
+                        </div>
+                        <ul v-if="sections.system && isExpanded" class="dropdown-menu">
+                            <li><router-link to="/course-management">Course Management</router-link></li>
+                            <li><router-link to="/system/training-title">Training Titles</router-link></li>
+                            <li><router-link to="/system/training-center">Training Centers</router-link></li>
+                            <li><router-link to="/system/instructor-management">Instructor Management</router-link></li>
+                            <li><router-link to="/system/course-list">Course List</router-link></li>
+                        </ul>
+                    </li>
+
+                    <!-- ✅ ATTENDANCE MANAGEMENT: Only for Admin/Manager -->
+                    <li v-if="isUserLoggedIn && isAdminOrManager">
+                        <div class="dropdown-header" @click="toggleSection('attendance')">
+                            <span class="icon">📝</span>
+                            <span v-show="isExpanded">Attendance Management</span>
+                            <span class="dropdown-arrow" :class="{ rotated: sections.attendance }">▼</span>
+                        </div>
+                        <ul v-if="sections.attendance && isExpanded" class="dropdown-menu">
+                            <li><router-link to="/attendance/mark">Mark Attendance</router-link></li>
+                            <li><router-link to="/attendance/view">View Attendance</router-link></li>
+                        </ul>
+                    </li>
+
+
+                    <!-- ✅ ROLE MANAGEMENT: Only for Admin/Manager -->
+                    <li v-if="isUserLoggedIn && isAdminOrManager">
+                        <div class="dropdown-header" @click="toggleSection('roles')">
+                            <span class="icon">🛡️</span>
+                            <span v-show="isExpanded">Role Management</span>
+                            <span class="dropdown-arrow" :class="{ rotated: sections.roles }">▼</span>
+                        </div>
+                        <ul v-if="sections.roles && isExpanded" class="dropdown-menu">
+                            <li><router-link to="/role-management/admins">🧑‍💼 Admin Roles</router-link></li>
+                            <li><router-link to="/role-management/managers">👔 Manager Roles</router-link></li>
+                        </ul>
+                    </li>
+
+                    <!-- TEMP DEBUG: REMOVE AFTER VERIFICATION -->
+                    <li style="color: yellow; font-size: 14px; padding: 10px;">
+                        Role: {{ userRole }}
+                    </li>
+
                 </ul>
             </div>
-
-            <!-- Navigation Items -->
-            <ul class="nav-items">
-                <li>
-                    <router-link to="/home">
-                        <span class="icon">🏠</span>
-                        <span v-show="isExpanded">Home</span>
-                    </router-link>
-                </li>
-
-                <!-- Dropdown Items Template -->
-                <li v-if="isUserLoggedIn">
-                    <router-link to="/my-courses/registered">
-                        <span class="icon">📋</span>
-                        <span v-show="isExpanded">My Learnings</span>
-                    </router-link>
-                </li>
-
-                <li v-if="isUserLoggedIn">
-                    <router-link to="/my-certificates">
-                        <span class="icon">📜</span>
-                        <span v-show="isExpanded">My Certificates</span>
-                    </router-link>
-                </li>
-                <li>
-                    <router-link to="/course-list-page">
-                        <span class="icon">🗂️</span>
-                        <span v-show="isExpanded">Upcoming Courses</span>
-                    </router-link>
-                </li>
-
-                <li>
-                    <router-link to="/course-list/all">
-                        <span class="icon">📚</span>
-                        <span v-show="isExpanded">Courses</span>
-                    </router-link>
-                </li>
-
-                <li>
-                    <router-link to="/peer-certification">
-                        <span class="icon">🏅</span>
-                        <span v-show="isExpanded">Peer Certification</span>
-                    </router-link>
-                </li>
-                <li>
-                    <router-link to="/trending">
-                        <span class="icon">🔥</span>
-                        <span v-show="isExpanded">Trending</span>
-                    </router-link>
-                </li>
-                <li>
-                    <router-link to="/training-centers">
-                        <span class="icon">👥</span>
-                        <span v-show="isExpanded">Training Centers</span>
-                    </router-link>
-                </li>
-
-                <li>
-                    <router-link to="/course-module">
-                        <span class="icon">📘</span>
-                        <span v-show="isExpanded">Course Module</span>
-                    </router-link>
-                </li>
-
-                <li>
-                    <div class="dropdown-header" @click="toggleSection('system')">
-                        <span class="icon">⚙️</span>
-                        <span v-show="isExpanded">System Management</span>
-                        <span class="dropdown-arrow" :class="{ rotated: sections.system }">▼</span>
-                    </div>
-                    <ul v-if="sections.system && isExpanded" class="dropdown-menu">
-                        <li><router-link to="/course-management">Course Management</router-link></li>
-                        <li><router-link to="/system/training-title">Training Titles</router-link></li>
-                        <li><router-link to="/system/training-center">Training Centers</router-link></li>
-                        <li><router-link to="/system/instructor-management">Instructor Management</router-link></li>
-                        <li><router-link to="/system/course-list">Course List</router-link></li>
-                    </ul>
-                </li>
-                <li>
-                    <div class="dropdown-header" @click="toggleSection('attendance')">
-                        <span class="icon">📝</span>
-                        <span v-show="isExpanded">Attendance Management</span>
-                        <span class="dropdown-arrow" :class="{ rotated: sections.attendance }">▼</span>
-                    </div>
-                    <ul v-if="sections.attendance && isExpanded" class="dropdown-menu">
-                        <li><router-link to="/attendance/mark">Mark Attendance</router-link></li>
-                        <li><router-link to="/attendance/view">View Attendance</router-link></li>
-                    </ul>
-                </li>
-            </ul>
 
             <!-- Hamburger Button -->
             <div class="hamburger-button" @click="toggleSidenav">
@@ -135,13 +134,25 @@
                 sections: {
                     courses: false,
                     myCourses: false,
-                    system: false 
+                    system: false,
+                    roles: false
+
 
                 },
+                userRole: localStorage.getItem("userRole") || "",
                 attendance: false,
                 isUserLoggedIn: !!localStorage.getItem("jwtToken"),
             };
         },
+        computed: {
+  isAdminOrManager() {
+    return this.userRole === "Admin" || this.userRole === "Manager";
+  },
+  isStandardUser() {
+    return this.userRole === "User";
+  }
+},
+        
         mounted() {
             eventBus.on("auth-change", this.refreshLoginState);
         },
@@ -175,18 +186,25 @@
                 window.location.reload();
             },
             refreshLoginState() {
-                this.isUserLoggedIn = !!localStorage.getItem("jwtToken");
-            },
+    this.isUserLoggedIn = !!localStorage.getItem("jwtToken");
+    this.userRole = localStorage.getItem("userRole") || "";
+    this.$forceUpdate();
+},
         },
     };</script>
 
 <style scoped>
     /* ===== Container ===== */
+    /* ===== Container ===== */
     .sidenav-container {
-        display: flex;
         height: 100vh;
         background: #f4f6f9;
+        overflow: hidden; /* Prevent outer scroll bar */
+        display: flex;
+        border-radius: 0 10px 10px 0; /* Only top-left rounded */
     }
+
+   
 
     /* ===== Hamburger Toggle ===== */
     .hamburger-button {
@@ -357,5 +375,11 @@
             z-index: 1000;
             height: 100%;
         }
+    }
+    .sidenav-scrollable {
+        flex: 1;
+        overflow-y: auto;
+        max-height: 100vh;
+        padding-bottom: 20px;
     }
 </style>

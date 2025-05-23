@@ -14,6 +14,9 @@ import InstructorManagement from "@/components/InstructorManagement.vue";
 import CourseListManager from "@/components/CourseListManager.vue";
 import MarkAttendance from "@/components/MarkAttendance.vue";
 import ViewAttendance from "@/components/ViewAttendance.vue";
+import AdminRoles from "@/components/AdminRoles.vue";
+import ManagerRoles from "@/components/ManagerRoles.vue";
+
 
 
 const routes = [
@@ -103,6 +106,16 @@ const routes = [
         name: "ViewAttendance",
         component: ViewAttendance
     },
+    {
+        path: "/role-management/admins",
+        name: "AdminRoles",
+        component: AdminRoles
+    },
+    {
+        path: "/role-management/managers",
+        name: "ManagerRoles",
+        component: ManagerRoles
+    }, 
     {
         path: "/",
         redirect: "/home" // ✅ Redirect to home by default

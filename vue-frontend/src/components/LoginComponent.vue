@@ -62,6 +62,7 @@
                     localStorage.setItem("userId", userData.userId);
                     localStorage.setItem("userName", `${userData.firstName} ${userData.lastName}`);
                     localStorage.setItem("jwtToken", userData.token);
+            localStorage.setItem("userRole", userData.role); 
 
                     eventBus.emit("auth-change");
                     this.$emit("login-success", userData);

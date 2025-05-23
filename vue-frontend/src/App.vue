@@ -2,7 +2,7 @@
     <div id="app">
         <!-- Header -->
         <SiteHeader />
-
+        <MainHeader @show-login="showLoginModal = true" />
         <!-- Layout container -->
         <div class="main-container">
             <!-- Sidebar -->
@@ -31,6 +31,7 @@
     import LoginComponent from "@/components/LoginComponent.vue";
     import RegistrationModal from "@/components/RegistrationModal.vue";
     import eventBus from "@/eventBus.js";
+    import MainHeader from "@/components/MainHeader.vue";
 
     export default {
         name: "App",
@@ -39,6 +40,7 @@
             SiteHeader,
             LoginComponent,
             RegistrationModal,
+            MainHeader,
         },
         data() {
             return {

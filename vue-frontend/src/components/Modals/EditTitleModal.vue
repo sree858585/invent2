@@ -10,7 +10,7 @@
 
                 <div class="form-group">
                     <label>Description</label>
-                    <textarea v-model="form.description"></textarea>
+                    <quill-editor v-model:content="form.description" contentType="html" theme="snow" class="quill-box" />
                 </div>
 
                 <div class="form-group">
@@ -43,7 +43,7 @@
 
                 <div class="form-group">
                     <label>Certificate Description</label>
-                    <textarea v-model="form.certDescription"></textarea>
+                    <quill-editor v-model:content="form.certDescription" contentType="html" theme="snow" class="quill-box" />
                 </div>
 
                 <div class="form-group">
@@ -66,69 +66,72 @@
 </template>
 
 <script>import apiClient from '@/axios';
+import { QuillEditor } from '@vueup/vue-quill';
 
-    export default {
-        props: ['title'],
-        emits: ['close', 'updated'],
-        data() {
-            return {
-                form: {
-                    subjectSysId: null,
-                    courseTitle: '',
-                    description: '',
-                    category: '',
-                    active: true,
-                    ai: false,
-                    cnecredits: false,
-                    oasascredits: false,
-                    creditHrs: '',
-                    a3rdPartyCrseId: '',
-                    certDescription: '',
-                    miscCertDesc: '',
-                    videoUrl: '',
-                    is3rdParty: false
-                },
-                categories: []
-            };
-        },
-        async mounted() {
-            const res = await apiClient.get('/Lookup/categories');
-            this.categories = res.data?.$values || [];
+export default {
+    components: { QuillEditor },
+    props: ['title'],
+    emits: ['close', 'updated'],
+    data() {
+        return {
+            form: {
+                subjectSysId: null,
+                courseTitle: '',
+                description: '',
+                category: '',
+                active: true,
+                ai: false,
+                cnecredits: false,
+                oasascredits: false,
+                creditHrs: '',
+                a3rdPartyCrseId: '',
+                certDescription: '',
+                miscCertDesc: '',
+                videoUrl: '',
+                is3rdParty: false
+            },
+            categories: []
+        };
+    },
+    async mounted() {
+        const res = await apiClient.get('/Lookup/categories');
+        this.categories = res.data?.$values || [];
 
-            const t = await apiClient.get(`/TrainingTitle/${this.title.subjectSysId}`);
-            const data = t.data;
+        const t = await apiClient.get(`/TrainingTitle/${this.title.subjectSysId}`);
+        const data = t.data;
 
-            this.form = {
-                subjectSysId: data.subjectSysId,
-                courseTitle: data.courseTitle ?? '',
-                description: data.description ?? '',
-                category: data.category ?? '',
-                active: data.active ?? false,
-                ai: data.ai ?? false,
-                cnecredits: data.cnecredits ?? false,
-                oasascredits: data.oasascredits ?? false,
-                creditHrs: data.creditHrs ?? '',
-                a3rdPartyCrseId: data.a3rdPartyCrseId ?? '',
-                certDescription: data.certDescription ?? '',
-                miscCertDesc: data.miscCertDesc ?? '',
-                videoUrl: data.videoUrl ?? '',
-                is3rdParty: data.is3rdParty ?? false
-            };
-        },
-        methods: {
-            async updateTitle() {
-                try {
-                    await apiClient.put(`/TrainingTitle/update/${this.form.subjectSysId}`, this.form);
-                    alert('Training title updated successfully!');
-                    this.$emit('updated');
-                    this.$emit('close');
-                } catch (err) {
-                    console.error('Error updating title', err);
-                    alert('Failed to update training title.');
-                }
+        this.form = {
+            subjectSysId: data.subjectSysId,
+            courseTitle: data.courseTitle ?? '',
+            description: data.description ?? '',
+            category: data.category ?? '',
+            active: data.active ?? false,
+            ai: data.ai ?? false,
+            cnecredits: data.cnecredits ?? false,
+            oasascredits: data.oasascredits ?? false,
+            creditHrs: data.creditHrs ?? '',
+            a3rdPartyCrseId: data.a3rdPartyCrseId ?? '',
+            certDescription: data.certDescription ?? '',
+            miscCertDesc: data.miscCertDesc ?? '',
+            videoUrl: data.videoUrl ?? '',
+            is3rdParty: data.is3rdParty ?? false
+        };
+    },
+    methods: {
+        async updateTitle() {
+            try {
+                await apiClient.put(`/TrainingTitle/update/${this.form.subjectSysId}`, this.form);
+                alert('Training title updated successfully!');
+                this.$emit('updated');
+                this.$emit('close');
+            } catch (err) {
+                console.error('Error updating title', err);
+                alert('Failed to update training title.');
             }
         }
-    };</script>
+    }
+};</script>
+
 
 <style scoped>
     /* styling same as CreateTitleModal.vue */
