@@ -1,70 +1,85 @@
 ﻿<template>
     <div class="my-learnings-page">
-        <!-- Left-aligned Tabs -->
-        <div class="tab-header">
-            <button :class="{ active: activeTab === 'inProgress' }" @click="activeTab = 'inProgress'">In Progress</button>
-            <button :class="{ active: activeTab === 'completed' }" @click="activeTab = 'completed'">Completed</button>
+        <!-- PLAYER MODE -->
+        <div v-if="isPlaying" class="player-wrap">
+            <ScormPlayer :launchUrl="player.launchUrl"
+                         :registrationId="player.registrationId"
+                         :scoId="player.scoId"
+                         :preloadCmi="player.preloadCmi"
+                         :title="player.title"
+                         @exit="exitPlayer" />
         </div>
 
-        <div v-if="loading" class="loading">Loading your courses...</div>
-        <div v-else-if="filteredCourses.length === 0" class="no-data">No {{ activeTab }} courses.</div>
+        <!-- LIST MODE -->
+        <div v-else>
+            <!-- Left-aligned Tabs -->
+            <div class="tab-header">
+                <button :class="{ active: activeTab === 'inProgress' }" @click="activeTab = 'inProgress'">In Progress</button>
+                <button :class="{ active: activeTab === 'completed' }" @click="activeTab = 'completed'">Completed</button>
+            </div>
 
-        <div v-else class="course-list">
-            <div v-for="course in filteredCourses"
-                 :key="course.courseSysId"
-                 :class="['course-card', { waitlisted: course.isWaitlisted }]"
-                 role="button"
-                 tabindex="0"
-                 @click="openCourseDetail(course.courseSysId)">
+            <div v-if="loading" class="loading">Loading your courses...</div>
+            <div v-else-if="filteredCourses.length === 0" class="no-data">No {{ activeTab }} courses.</div>
 
-                <div class="course-image" :style="getImageStyle()" />
+            <div v-else class="course-list">
+                <div v-for="course in filteredCourses"
+                     :key="course.courseSysId"
+                     :class="['course-card', { waitlisted: course.isWaitlisted }]"
+                     role="button"
+                     tabindex="0"
+                     @click="openCourseDetail(course.courseSysId)">
 
-                <div class="course-details">
-                    <h3 class="course-title">{{ truncateText(course.subjectTitle, 70) }}</h3>
-                    <p class="course-date"><strong>Date:</strong> {{ formatDate(course.courseDate) }}</p>
-                    <p class="course-time"><strong>Time:</strong> {{ truncateText(course.courseTime || 'N/A', 40) }}</p>
-                    <p class="course-desc">{{ truncateText(course.subjectDescription || 'No description provided.', 120) }}</p>
-                    <div v-if="course.isWaitlisted" class="waitlist-banner">
-                        <span class="icon">⏳</span>
-                        <span class="message">You are currently on the waitlist for this course.</span>
-                    </div>
-                </div>
+                    <div class="course-image" :style="getImageStyle()" />
 
-                <div class="course-actions">
-                    <!-- Progress ring placed above buttons -->
-                    <div v-if="course.status === 1" class="progress-ring">
-                        <svg viewBox="0 0 36 36">
-                            <path class="bg" d="M18 2.0845a 15.9155 15.9155 0 1 1 0 31.831" />
-                            <path class="progress" :stroke-dasharray="`${course.progress}, 100`" d="M18 2.0845a 15.9155 15.9155 0 1 1 0 31.831" />
-                            <text x="18" y="20.35" class="percentage">{{ course.progress }}%</text>
-                        </svg>
-                    </div>
-                    <!-- Status Badge -->
-                    <div v-if="course.status === 2 || course.status === 4" class="status-tag">
-                        {{ course.status === 2 ? "Cancelled" : "Absent" }}
+                    <div class="course-details">
+                        <h3 class="course-title">{{ truncateText(course.subjectTitle, 70) }}</h3>
+                        <p class="course-date"><strong>Date:</strong> {{ formatDate(course.courseDate) }}</p>
+                        <p class="course-time"><strong>Time:</strong> {{ truncateText(course.courseTime || 'N/A', 40) }}</p>
+                        <p class="course-desc">{{ truncateText(course.subjectDescription || 'No description provided.', 120) }}</p>
+                        <div v-if="course.isWaitlisted" class="waitlist-banner">
+                            <span class="icon">⏳</span>
+                            <span class="message">You are currently on the waitlist for this course.</span>
+                        </div>
                     </div>
 
-                    <button v-if="course.status === 1"
-                            class="launch-btn"
-                            @click.stop="launchCourse(course.courseSysId)">
-                        Launch Course
-                    </button>
+                    <div class="course-actions">
+                        <!-- Progress ring placed above buttons -->
+                        <div v-if="course.status === 1" class="progress-ring">
+                            <svg viewBox="0 0 36 36">
+                                <path class="bg" d="M18 2.0845a 15.9155 15.9155 0 1 1 0 31.831" />
+                                <path class="progress" :stroke-dasharray="`${course.progress}, 100`" d="M18 2.0845a 15.9155 15.9155 0 1 1 0 31.831" />
+                                <text x="18" y="20.35" class="percentage">{{ course.progress }}%</text>
+                            </svg>
+                        </div>
 
-                    <button v-if="course.status === 1"
-                            class="drop-btn"
-                            @click.stop="openDropConfirm(course.courseSysId)">
-                        Drop
-                    </button>
+                        <!-- Status Badge -->
+                        <div v-if="course.status === 2 || course.status === 4" class="status-tag">
+                            {{ course.status === 2 ? "Cancelled" : "Absent" }}
+                        </div>
 
-                    <button v-if="course.status === 3"
-                            class="certificate-btn"
-                            @click.stop>
-                        View Certificate
-                    </button>
+                        <button v-if="course.status === 1"
+                                class="launch-btn"
+                                @click.stop="launchCourse(course.courseSysId)">
+                            Launch Course
+                        </button>
+
+                        <button v-if="course.status === 1"
+                                class="drop-btn"
+                                @click.stop="openDropConfirm(course.courseSysId)">
+                            Drop
+                        </button>
+
+                        <button v-if="course.status === 3"
+                                class="certificate-btn"
+                                @click.stop>
+                            View Certificate
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
+
     <DropCourseConfirmModal v-if="showDropModal"
                             @close="showDropModal = false"
                             @confirm-drop="confirmDrop" />
@@ -78,11 +93,13 @@
 <script>import apiClient from "@/axios";
     import DropCourseConfirmModal from "@/components/Modals/DropCourseConfirmModal.vue";
     import UserCourseViewModal from "@/components/Modals/UserCourseViewModal.vue";
+    import ScormPlayer from "@/components/ScormPlayer.vue";
 
     export default {
         components: {
             DropCourseConfirmModal,
-            UserCourseViewModal
+            UserCourseViewModal,
+            ScormPlayer
         },
         name: "MyLearningsPage",
         data() {
@@ -93,89 +110,108 @@
                 showDropModal: false,
                 selectedCourseId: null,
                 selectedUserCourse: null,
-                closeUserCourseModalAfterDrop: false 
+                closeUserCourseModalAfterDrop: false,
 
+                // SCORM player state
+                isPlaying: false,
+                player: null
             };
         },
         computed: {
-  filteredCourses() {
-    if (this.activeTab === "inProgress") {
-      return this.allCourses
-        .filter(c => c.status === 1)
-        .map(c => {
-          return {
-            ...JSON.parse(JSON.stringify(c)), // deep clone to avoid side effects
-            progress: Math.floor(Math.random() * 50 + 40),
-          };
-        });
-    } else {
-      // Show Attended (3), Cancelled (2), and Absent (4) only
-      return this.allCourses.filter(c => [2, 3, 4].includes(c.status));
-    }
-  }
-},
-       
+            filteredCourses() {
+                if (this.activeTab === "inProgress") {
+                    return this.allCourses
+                        .filter(c => c.status === 1)
+                        .map(c => {
+                            return {
+                                ...JSON.parse(JSON.stringify(c)),
+                                progress: Math.floor(Math.random() * 50 + 40),
+                            };
+                        });
+                } else {
+                    return this.allCourses.filter(c => [2, 3, 4].includes(c.status));
+                }
+            }
+        },
         methods: {
-            launchCourse(courseId) {
-              console.log("Launching course", courseId);
-              // Your actual logic to open course player or redirect
-            },
-            openDropConfirm(courseId, closeUserModal = false) {
-    this.selectedCourseId = courseId;
-    this.showDropModal = true;
+            async launchCourse(courseId) {
+                // FRONT-END STUB (no backend required yet)
+                const TEST_SCOS = {
+                    "teleworkCourseId": "/content/scorm/telework/scormcontent/index.html"
+                };
+                const demoLaunch = TEST_SCOS[courseId] || "/content/scorm/telework/scormcontent/index.html";
 
-    if (closeUserModal) {
-        this.closeUserCourseModalAfterDrop = true; // 👈 Add this flag
-    }
-},
+                const registrationId = `reg-${courseId}-${Date.now()}`;
+                const scoId = `sco-demo`;
+                const preloadCmi = {
+                    "cmi.core.lesson_status": "incomplete",
+                    "cmi.core.lesson_location": "",
+                    "cmi.suspend_data": "",
+                    "cmi.core.score.raw": "",
+                    "cmi.core.total_time": "0000:00:00.00"
+                };
+
+                const courseTitle =
+                    this.allCourses.find(c => c.courseSysId === courseId)?.subjectTitle || "Course";
+
+                this.player = {
+                    launchUrl: demoLaunch,
+                    registrationId,
+                    scoId,
+                    preloadCmi,
+                    title: courseTitle
+                };
+                this.isPlaying = true;
+            },
+
+            exitPlayer() {
+                this.isPlaying = false;
+                this.player = null;
+                this.fetchUserCourses();
+            },
+
+            openDropConfirm(courseId, closeUserModal = false) {
+                this.selectedCourseId = courseId;
+                this.showDropModal = true;
+                if (closeUserModal) this.closeUserCourseModalAfterDrop = true;
+            },
+
             async dropCourse(courseId) {
                 const userId = localStorage.getItem("userId");
                 if (!userId) return;
-
                 try {
-                    await apiClient.post(`/Course/drop`, {
-                        userId,
-                        courseId
-                    });
-                    // Optional: Refetch or remove dropped course from UI
-                    this.fetchUserCourses(); // or manually update allCourses list
+                    await apiClient.post(`/Course/drop`, { userId, courseId });
+                    this.fetchUserCourses();
                 } catch (err) {
                     console.error("Failed to drop course:", err);
                 }
             },
+
             async openCourseDetail(courseId) {
-              try {
-                const res = await apiClient.get(`/Course/${courseId}`);
-                console.log("Fetched course detail:", res.data); // ✅ Add this log
-                if (res.data) {
-                  this.selectedUserCourse = res.data;
+                try {
+                    const res = await apiClient.get(`/Course/${courseId}`);
+                    if (res.data) this.selectedUserCourse = res.data;
+                } catch (err) {
+                    console.error("Failed to load full course detail:", err);
                 }
-              } catch (err) {
-                console.error("Failed to load full course detail:", err);
-              }
             },
+
             async confirmDrop() {
                 const userId = localStorage.getItem("userId");
                 if (!userId || !this.selectedCourseId) return;
-
                 try {
-                    await apiClient.post(`/Course/drop`, {
-                        userId,
-                        courseId: this.selectedCourseId
-                    });
+                    await apiClient.post(`/Course/drop`, { userId, courseId: this.selectedCourseId });
                     this.showDropModal = false;
-
-                    // ✅ Close the view modal if drop was initiated from inside it
                     if (this.closeUserCourseModalAfterDrop) {
                         this.selectedUserCourse = null;
                         this.closeUserCourseModalAfterDrop = false;
                     }
-
-                    this.fetchUserCourses(); // Refresh the course list
+                    this.fetchUserCourses();
                 } catch (err) {
                     console.error("Failed to drop course:", err);
                 }
             },
+
             async fetchUserCourses() {
                 const userId = localStorage.getItem("userId");
                 if (!userId) return;
@@ -189,6 +225,7 @@
                     this.loading = false;
                 }
             },
+
             getImageStyle() {
                 const imageUrl = require("@/assets/hiv2.png");
                 return {
@@ -215,6 +252,10 @@
         padding: 24px;
         background-color: #f4f6f8;
         min-height: 100vh;
+    }
+
+    .player-wrap {
+        min-height: 80vh;
     }
 
     .tab-header {
@@ -261,7 +302,7 @@
         padding: 20px;
         align-items: flex-start;
         gap: 20px;
-        cursor: pointer; /* 👈 Makes it behave like a button */
+        cursor: pointer;
         transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
 
@@ -370,6 +411,7 @@
             text-anchor: middle;
             dominant-baseline: middle;
         }
+
     .status-tag {
         background-color: #ffdddd;
         color: #d32f2f;
@@ -380,10 +422,12 @@
         margin-top: 6px;
         text-align: center;
     }
+
     .course-card.waitlisted {
         opacity: 0.5;
         pointer-events: none;
     }
+
     .waitlist-banner {
         display: flex;
         align-items: center;
@@ -407,4 +451,19 @@
         .waitlist-banner .message {
             flex: 1;
         }
+
+    @media (max-width: 768px) {
+        .my-learnings-page {
+            padding: 12px;
+        }
+
+        .course-card {
+            flex-direction: column;
+        }
+
+        .course-image {
+            width: 100%;
+            height: 160px;
+        }
+    }
 </style>
