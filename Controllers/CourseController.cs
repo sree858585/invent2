@@ -21,8 +21,8 @@ namespace HIVTraining.Controllers
         }
 
         [HttpGet("FormatPaged/{format}")]
-public async Task<IActionResult> GetCoursesByFormatPaged(
-    int format,
+        public async Task<IActionResult> GetCoursesByFormatPaged(
+    int format,                                    // legacy: 0 = All, >0 = single format
     [FromQuery] int page = 1,
     [FromQuery] int pageSize = 9,
     [FromQuery] string? search = null,
@@ -30,138 +30,149 @@ public async Task<IActionResult> GetCoursesByFormatPaged(
     [FromQuery] int? category = null,
     [FromQuery] int? site = null,
     [FromQuery] DateTime? fromDate = null,
-    [FromQuery] DateTime? toDate = null)
-{
-    var baseQuery = _context.Courses
-        .Where(c => !c.Hidden);
-
-    // Apply format filter (0 means 'All')
-    if (format != 0)
-    {
-        baseQuery = baseQuery.Where(c => c.Format == format);
-    }
-
-    // Apply search filter
-    if (!string.IsNullOrWhiteSpace(search))
-    {
-        baseQuery = baseQuery.Where(c =>
-            (c.Subject != null && EF.Functions.Like(c.Subject.CourseTitle, $"%{search}%")) ||
-            (c.Subject != null && EF.Functions.Like(c.Subject.Description, $"%{search}%")) ||
-            (c.City != null && EF.Functions.Like(c.City, $"%{search}%")) ||
-            (c.Information != null && EF.Functions.Like(c.Information, $"%{search}%"))
-        );
-    }
-
-    // Apply advanced filters
-    if (region.HasValue)
-    {
-        baseQuery = baseQuery.Where(c => c.Region == region);
-    }
-
-    if (category.HasValue)
-    {
-        baseQuery = baseQuery.Where(c => c.ContractType == category);
-    }
-
-    if (site.HasValue)
-    {
-        baseQuery = baseQuery.Where(c => c.SiteSysId == site);
-    }
-
-    if (fromDate.HasValue)
-    {
-        baseQuery = baseQuery.Where(c => c.CourseDate >= fromDate.Value);
-    }
-
-    if (toDate.HasValue)
-    {
-        baseQuery = baseQuery.Where(c => c.CourseDate <= toDate.Value);
-    }
-
-    // Include Subject
-    var query = baseQuery.Include(c => c.Subject);
-
-    var total = await query.CountAsync();
-
-    var data = await query
-        .OrderBy(c => c.CourseDate)
-        .Skip((page - 1) * pageSize)
-        .Take(pageSize)
-        .Select(c => new
+    [FromQuery] DateTime? toDate = null,
+    [FromQuery] string? formats = null            // NEW: multi-select "1,2,4"
+)
         {
-            c.CourseSysId,
-            c.CourseDate,
-            c.CourseTime,
-            c.Information,
-            c.City,
-            c.TrainingLocation,
-            c.MaxSeats,
-            c.Format,
-            c.Region,
-            c.ContractType,
-            c.Instructor1,
-            c.Instructor2,
-            IsMultiSession = c.IsMultiSession,
-            SiteName = _context.Sites
-                .Where(s => s.SiteSysId == c.SiteSysId)
-                .Select(s => s.SiteName)
-                .FirstOrDefault(),
+            var baseQuery = _context.Courses
+                .Where(c => !c.Hidden);
 
-            SubjectTitle = c.Subject.CourseTitle,
-            SubjectDescription = c.Subject.Description,
-            c.Subject.Cnecredits,
-            c.Subject.Oasascredits,
-            c.Subject.PeerCertCredits,
-            c.Subject.CreditHrs,
+            // ===== FORMAT FILTERS =====
+            // Parse multi-select first
+            List<int> selectedFormats = new();
+            if (!string.IsNullOrWhiteSpace(formats))
+            {
+                selectedFormats = formats
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(s => int.TryParse(s, out var v) ? (int?)v : null)
+                    .Where(v => v.HasValue)
+                    .Select(v => v!.Value)
+                    .Distinct()
+                    .ToList();
+            }
 
-            Sessions = _context.CourseSessions
-                .Where(s => s.CourseSysId == c.CourseSysId)
-                .Select(s => new
+            if (selectedFormats.Count > 0)
+            {
+                // multi-select overrides legacy param
+                baseQuery = baseQuery.Where(c => c.Format.HasValue && selectedFormats.Contains(c.Format.Value));
+            }
+            else if (format != 0)
+            {
+                // legacy single-format
+                baseQuery = baseQuery.Where(c => c.Format == format);
+            }
+
+            // ===== SEARCH =====
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                baseQuery = baseQuery.Where(c =>
+                    (c.Subject != null && EF.Functions.Like(c.Subject.CourseTitle, $"%{search}%")) ||
+                    (c.Subject != null && EF.Functions.Like(c.Subject.Description, $"%{search}%")) ||
+                    (c.City != null && EF.Functions.Like(c.City, $"%{search}%")) ||
+                    (c.Information != null && EF.Functions.Like(c.Information, $"%{search}%"))
+                );
+            }
+
+            // ===== ADVANCED FILTERS =====
+            if (region.HasValue)
+                baseQuery = baseQuery.Where(c => c.Region == region);
+
+            if (category.HasValue)
+                baseQuery = baseQuery.Where(c => c.ContractType == category);
+
+            if (site.HasValue)
+                baseQuery = baseQuery.Where(c => c.SiteSysId == site);
+
+            if (fromDate.HasValue)
+                baseQuery = baseQuery.Where(c => c.CourseDate >= fromDate.Value);
+
+            if (toDate.HasValue)
+                baseQuery = baseQuery.Where(c => c.CourseDate <= toDate.Value);
+
+            // ===== INCLUDE & PAGE =====
+            var query = baseQuery.Include(c => c.Subject);
+
+            var total = await query.CountAsync();
+
+            var data = await query
+                .OrderBy(c => c.CourseDate)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(c => new
                 {
-                    Date = s.SessionDate,
-                    StartTime = s.StartTime,
-                    EndTime = s.EndTime
-                }).ToList(),
+                    c.CourseSysId,
+                    c.CourseDate,
+                    c.CourseTime,
+                    c.Information,
+                    c.City,
+                    c.TrainingLocation,
+                    c.MaxSeats,
+                    c.Format,
+                    c.Region,
+                    c.ContractType,
+                    c.Instructor1,
+                    c.Instructor2,
+                    IsMultiSession = c.IsMultiSession,
+                    SiteName = _context.Sites
+                        .Where(s => s.SiteSysId == c.SiteSysId)
+                        .Select(s => s.SiteName)
+                        .FirstOrDefault(),
 
-            FormatLabel = _context.LkFormats
-                .Where(f => f.Code == c.Format)
-                .Select(f => f.Value)
-                .FirstOrDefault(),
+                    SubjectTitle = c.Subject.CourseTitle,
+                    SubjectDescription = c.Subject.Description,
+                    c.Subject.Cnecredits,
+                    c.Subject.Oasascredits,
+                    c.Subject.PeerCertCredits,
+                    c.Subject.CreditHrs,
 
-            RegionLabel = _context.LkRegionCnties
-                .Where(r => r.Code == c.Region)
-                .Select(r => r.Value)
-                .FirstOrDefault(),
+                    Sessions = _context.CourseSessions
+                        .Where(s => s.CourseSysId == c.CourseSysId)
+                        .Select(s => new
+                        {
+                            Date = s.SessionDate,
+                            StartTime = s.StartTime,
+                            EndTime = s.EndTime
+                        }).ToList(),
 
-            CategoryLabel = _context.LkCategories
-                .Where(cat => cat.Code == c.ContractType)
-                .Select(cat => cat.Value)
-                .FirstOrDefault(),
+                    FormatLabel = _context.LkFormats
+                        .Where(f => f.Code == c.Format)
+                        .Select(f => f.Value)
+                        .FirstOrDefault(),
 
-            InstructorLabel = _context.Instructors
-                .Where(i => i.InstructorSysId == c.Instructor1)
-                .Select(i => i.Name)
-                .FirstOrDefault(),
+                    RegionLabel = _context.LkRegionCnties
+                        .Where(r => r.Code == c.Region)
+                        .Select(r => r.Value)
+                        .FirstOrDefault(),
 
-            InstructorNote = _context.Instructors
-                .Where(i => i.InstructorSysId == c.Instructor1)
-                .Select(i => i.InsNotes)
-                .FirstOrDefault(),
+                    CategoryLabel = _context.LkCategories
+                        .Where(cat => cat.Code == c.ContractType)
+                        .Select(cat => cat.Value)
+                        .FirstOrDefault(),
 
-            Instructor2Label = _context.Instructors
-                .Where(i => i.InstructorSysId == c.Instructor2)
-                .Select(i => i.Name)
-                .FirstOrDefault(),
+                    InstructorLabel = _context.Instructors
+                        .Where(i => i.InstructorSysId == c.Instructor1)
+                        .Select(i => i.Name)
+                        .FirstOrDefault(),
 
-            Instructor2Note = _context.Instructors
-                .Where(i => i.InstructorSysId == c.Instructor2)
-                .Select(i => i.InsNotes)
-                .FirstOrDefault(),
-        })
-        .ToListAsync();
+                    InstructorNote = _context.Instructors
+                        .Where(i => i.InstructorSysId == c.Instructor1)
+                        .Select(i => i.InsNotes)
+                        .FirstOrDefault(),
 
-    return Ok(new { total, data });
-}
+                    Instructor2Label = _context.Instructors
+                        .Where(i => i.InstructorSysId == c.Instructor2)
+                        .Select(i => i.Name)
+                        .FirstOrDefault(),
+
+                    Instructor2Note = _context.Instructors
+                        .Where(i => i.InstructorSysId == c.Instructor2)
+                        .Select(i => i.InsNotes)
+                        .FirstOrDefault(),
+                })
+                .ToListAsync();
+
+            return Ok(new { total, data });
+        }
 
 
         [HttpPost("register")]
@@ -182,7 +193,6 @@ public async Task<IActionResult> GetCoursesByFormatPaged(
                 return NotFound(new { message = "Course not found" });
 
             bool isWaitlisted = course.MaxSeats == null || course.MaxSeats <= 0;
-
             int? waitlistNumber = null;
 
             if (isWaitlisted)
@@ -208,27 +218,72 @@ public async Task<IActionResult> GetCoursesByFormatPaged(
 
             _context.UserCourses.Add(userCourse);
 
+            // ✅ Always sync ADA on the user profile to reflect latest choice
+            user.Adaneed = adaNeed;
+            user.Adadetails = adaNeed ? adaDetails : null;
+            user.DateModified = DateTime.UtcNow;
+
+            // Optional but explicit: mark as modified to avoid any tracking surprises
+            _context.Users.Update(user);
+
             if (!isWaitlisted && course.MaxSeats.HasValue)
-            {
-                course.MaxSeats--; // Normal seat decrement if not waitlisted
-            }
+                course.MaxSeats--;
 
             await _context.SaveChangesAsync();
 
-            return Ok(new { message = isWaitlisted ? "Registered to waitlist." : "Registration successful." });
+            return Ok(new
+            {
+                message = isWaitlisted ? "Registered to waitlist." : "Registration successful.",
+                userAda = new { adaneed = user.Adaneed ?? false, adadetails = user.Adadetails }
+            });
         }
+        [HttpGet("user-ada")]
+        public async Task<IActionResult> GetUserAda([FromQuery] Guid userId)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == userId);
+            if (user == null)
+                return NotFound(new { message = "User not found" });
 
+            return Ok(new
+            {
+                adaneed = user.Adaneed ?? false,
+                adadetails = user.Adadetails
+            });
+        }
         [HttpGet("check-registered")]
         public async Task<IActionResult> CheckIfRegistered([FromQuery] Guid userId, [FromQuery] int courseId)
         {
             var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == userId);
             if (user == null)
-                return Ok(new { isRegistered = false });
+                return Ok(new { isRegistered = false, userAda = (object?)null, courseAda = (object?)null });
 
-            var already = await _context.UserCourses.AnyAsync(uc =>
-                uc.UserSysId == user.UserSysId && uc.CourseSysId == courseId && uc.Status == 1); // 1 = Registered
+            // is the user registered for this course?
+            var userCourse = await _context.UserCourses
+                .Where(uc => uc.UserSysId == user.UserSysId && uc.CourseSysId == courseId && uc.Status == 1) // 1 = Registered
+                .Select(uc => new
+                {
+                    uc.Adaneed,
+                    uc.Adadetails
+                })
+                .FirstOrDefaultAsync();
 
-            return Ok(new { isRegistered = already });
+            bool already = userCourse != null;
+
+            // user's profile ADA (fallback)
+            var userAda = new
+            {
+                adaneed = user.Adaneed ?? false,
+                adadetails = user.Adadetails
+            };
+
+            // course-specific ADA (preferred if registered)
+            var courseAda = userCourse == null ? null : new
+            {
+                adaneed = userCourse.Adaneed ?? false,
+                adadetails = userCourse.Adadetails
+            };
+
+            return Ok(new { isRegistered = already, userAda, courseAda });
         }
 
         [HttpGet("user-courses/{userId}")]
