@@ -33,10 +33,36 @@
                     </li>
 
                     <li>
-                        <router-link to="/course-list/all">
+                        <div class="dropdown-header" @click="goToCourses">
                             <span class="icon">📚</span>
                             <span v-show="isExpanded">Courses</span>
-                        </router-link>
+                            <span class="dropdown-arrow" :class="{ rotated: sections.courses }">▼</span>
+                        </div>
+
+                        <!-- Dropdown with checkboxes -->
+                        <div v-if="sections.courses && isExpanded" class="dropdown-menu">
+                            <!-- Multi-select checkboxes -->
+                            <div class="format-filter">
+
+                                <div class="format-checkbox">
+                                    <input type="checkbox" id="fmt-all"
+                                           :checked="isAllSelected"
+                                           @change="toggleAll($event.target.checked)" />
+                                    <label for="fmt-all">All</label>
+                                </div>
+
+                                <div class="format-checkbox" v-for="fmt in formatOptions" :key="fmt.id">
+                                    <input type="checkbox"
+                                           :id="`fmt-${fmt.id}`"
+                                           :value="fmt.id"
+                                           :checked="selectedFormats.includes(String(fmt.id))"
+                                           @change="toggleFormat(fmt.id, $event.target.checked)" />
+                                    <label :for="`fmt-${fmt.id}`">{{ fmt.label }}</label>
+                                </div>
+
+                                
+                            </div>
+                        </div>
                     </li>
 
                     <li>
@@ -142,6 +168,16 @@
                 userRole: localStorage.getItem("userRole") || "",
                 attendance: false,
                 isUserLoggedIn: !!localStorage.getItem("jwtToken"),
+                // NEW: course format selections
+                selectedFormats: ['all'],
+                formatOptions: [
+                    { id: 1, label: 'In Person' },
+                    { id: 2, label: 'Online' },
+                    { id: 3, label: 'Archived Webinars' },
+                    { id: 4, label: 'Live Webinars' },
+                    { id: 5, label: 'Hybrid' },
+                    { id: 6, label: 'New' },
+                ],
             };
         },
         computed: {
@@ -150,15 +186,37 @@
   },
   isStandardUser() {
     return this.userRole === "User";
-  }
+            },
+            // 'All' is considered selected if 'all' is in the array OR none are checked
+            isAllSelected() {
+                return this.selectedFormats.includes('all') || this.selectedFormats.length === 0;
+            }
+            
 },
         
         mounted() {
+            // Initialize from URL (so refresh keeps selections)
+            const q = this.$route.query?.formats;
+            if (typeof q === 'string' && q.trim()) {
+                const parts = q.split(',').map(s => s.trim()).filter(Boolean);
+                this.selectedFormats = parts.length ? parts : ['all'];
+            }
+            if (this.$route.path.startsWith('/course-list')) {
+                this.sections.courses = true;
+            }
             eventBus.on("auth-change", this.refreshLoginState);
         },
         beforeUnmount() {
             eventBus.off("auth-change", this.refreshLoginState);
+        }, watch: {
+            // Open the dropdown when you navigate TO any course-list route
+            '$route.path'(val) {
+                if (val.startsWith('/course-list')) {
+                    this.sections.courses = true; // auto-open on arrival
+                }
+            }
         },
+
         methods: {
             toggleSidenav() {
                 this.isExpanded = !this.isExpanded;
@@ -168,6 +226,65 @@
             },
             toggleProfileDropdown() {
                 this.showProfileDropdown = !this.showProfileDropdown;
+            },
+            // Centralized: update the URL immediately (auto-apply)
+            updateCourseRoute() {
+                const formatsParam = this.isAllSelected ? undefined : this.selectedFormats.join(',');
+                this.$router.push({
+                    path: '/course-list/all',
+                    query: formatsParam ? { formats: formatsParam } : {}
+                });
+            },
+            // NEW: checkbox logic
+            toggleAll(checked) {
+                this.selectedFormats = checked ? ['all'] : [];
+                this.updateCourseRoute(); // auto-apply
+
+            },
+            goToCourses() {
+                const onCourses = this.$route.path.startsWith('/course-list');
+
+                if (!onCourses) {
+                    // First time / not on the page yet: navigate and open
+                    this.selectedFormats = ['all'];
+                    this.$router.push({ path: '/course-list/all' });
+                    this.sections.courses = true;
+                } else {
+                    // Already on the page: just toggle open/close
+                    this.sections.courses = !this.sections.courses;
+                }
+            },
+            toggleFormat(id, checked) {
+                // normalize to strings
+                const key = String(id);
+
+                // remove 'all' when picking specifics
+                this.selectedFormats = this.selectedFormats.filter(v => v !== 'all');
+
+                if (checked) {
+                    if (!this.selectedFormats.includes(key)) this.selectedFormats.push(key);
+                } else {
+                    this.selectedFormats = this.selectedFormats.filter(v => v !== key);
+                }
+
+                // if none selected, fall back to 'all'
+                if (this.selectedFormats.length === 0) this.selectedFormats = ['all'];
+
+                this.updateCourseRoute(); // auto-apply
+            },
+
+            applyCourseFilters() {
+                // Build query param `formats=1,2,4` or clear for 'all'
+                const formatsParam = this.isAllSelected
+                    ? undefined
+                    : this.selectedFormats.join(',');
+
+                // Always navigate to /course-list/all to keep your current route pattern,
+                // but pass the comma-separated formats in the query string.
+                this.$router.push({
+                    path: '/course-list/all',
+                    query: formatsParam ? { formats: formatsParam } : {}
+                });
             },
             navigateToProfile() {
                 const userId = localStorage.getItem("userId");
@@ -382,4 +499,27 @@
         max-height: 100vh;
         padding-bottom: 20px;
     }
+
+    /* add inside <style scoped> in SideNav.vue    new css  */
+
+    .format-filter {
+        padding: 10px 0 10px 4px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .format-title {
+        font-weight: 600;
+        color: #fff;
+        margin-bottom: 4px;
+    }
+
+    .format-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #e0e0e0;
+    }
+
 </style>

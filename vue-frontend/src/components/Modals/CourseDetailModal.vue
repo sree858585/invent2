@@ -4,7 +4,18 @@
             <!-- Title Banner -->
             <div class="modal-banner" :style="bannerStyle">
                 <h2 class="course-title">{{ course.subjectTitle }}</h2>
-                <button class="close-btn" @click="$emit('close')">&times;</button>
+                <div class="banner-actions">
+                    <template v-if="alreadyRegistered">
+                        <span class="registered-pill">✅ Registered</span>
+                    </template>
+                    <template v-else>
+                        <button class="btn-primary btn-register-top" @click.stop="registerCourse">
+                            Register
+                        </button>
+                    </template>
+
+                    <button class="close-btn" @click="$emit('close')">&times;</button>
+                </div>
             </div>
 
             <div class="modal-body">
@@ -17,26 +28,51 @@
                 <!-- Course Details -->
                 <div class="modal-section">
                     <h4 class="section-title">📋 Course Details</h4>
-                    <div class="grid">
-                        <div><strong>Date:</strong> {{ formatDate(course.courseDate) }}</div>
-                        <div><strong>Time:</strong> {{ course.courseTime || 'N/A' }}</div>
-                        <div><strong>Location:</strong> {{ course.trainingLocation || 'N/A' }}</div>
-                        <div><strong>Training Center:</strong> {{ course.siteName || 'N/A' }}</div>
-                        <div><strong>Format:</strong> {{ course.formatLabel?.trim() || 'N/A' }}</div>
-                        <div><strong>Category:</strong> {{ course.categoryLabel?.trim() || 'N/A' }}</div>
-                        <div><strong>Region:</strong> {{ course.regionLabel?.trim() || 'N/A' }}</div>
-                        <div><strong>CNE Credits:</strong> {{ course.cnecredits ? 'Yes' : 'No' }}</div>
-                        <div><strong>OASAS Credits:</strong> {{ course.oasascredits ? 'Yes' : 'No' }}</div>
-                        <div><strong>Peer Cert Hours:</strong> {{ course.peerCertCredits ? 'Yes' : 'No' }}</div>
-                        <div><strong>Credit Hours:</strong> {{ course.creditHrs || 'N/A' }}</div>
+
+                    <div class="grid grid-top">
+                        <div><strong>Date:</strong> <span class="value">{{ formatDate(course.courseDate) }}</span></div>
+                        <div>
+                            <strong>Time:</strong>
+                            <span class="time-text"
+                                  :class="{ clamped: !timeExpanded }"
+                                  :title="course.courseTime">
+                                {{ course.courseTime || 'N/A' }}
+                            </span>
+                            <button v-if="needsTimeClamp"
+                                    class="moreless"
+                                    @click="timeExpanded = !timeExpanded">
+                                {{ timeExpanded ? 'less' : 'more…' }}
+                            </button>
+                        </div>
+                        <div><strong>Location:</strong> <span class="value">{{ course.trainingLocation || 'N/A' }}</span></div>
+                        <div><strong>Training Center:</strong> <span class="value">{{ course.siteName || 'N/A' }}</span></div>
+                        <div><strong>Format:</strong> <span class="value">{{ course.formatLabel?.trim() || 'N/A' }}</span></div>
+                    </div>
+
+                    <!-- Description section moved here -->
+                    <div class="modal-section description-inline">
+                        <h4 class="section-title">📝 Description</h4>
+                        <div v-html="course.subjectDescription || 'No description available.'"
+                             class="rich-html-content">
+                        </div>
+                    </div>
+
+                    <!-- Second line (remaining fields) -->
+                    <div class="grid grid-bottom">
+                        <div><strong>Category:</strong> <span class="value">{{ course.categoryLabel?.trim() || 'N/A' }}</span></div>
+                        <div><strong>Region:</strong> <span class="value">{{ course.regionLabel?.trim() || 'N/A' }}</span></div>
+                        <div><strong>CNE Credits:</strong> <span class="value">{{ course.cnecredits ? 'Yes' : 'No' }}</span></div>
+                        <div><strong>OASAS Credits:</strong> <span class="value">{{ course.oasascredits ? 'Yes' : 'No' }}</span></div>
+                        <div><strong>Peer Cert Hours:</strong> <span class="value">{{ course.peerCertCredits ? 'Yes' : 'No' }}</span></div>
+                        <div><strong>Credit Hours:</strong> <span class="value">{{ course.creditHrs || 'N/A' }}</span></div>
                     </div>
                 </div>
 
                 <!-- Description -->
-                <div class="modal-section">
-                    <h4 class="section-title">📝 Description</h4>
-                    <div v-html="course.subjectDescription || 'No description available.'" class="rich-html-content"></div>                </div>
-
+                <!--<div class="modal-section">
+        <h4 class="section-title">📝 Description</h4>
+        <div v-html="course.subjectDescription || 'No description available.'" class="rich-html-content"></div>
+    </div>-->
                 <!-- Presenter Section -->
                 <div class="modal-section" v-if="hasPresenters">
                     <h4 class="section-title">👨‍🏫 Presenter</h4>
@@ -74,12 +110,14 @@
                 <!-- ADA Requirement Section -->
                 <div class="modal-section">
                     <label class="ada-checkbox">
-                        <input type="checkbox" v-model="showAdaPrompt" @change="handleAdaCheckbox" />
+                        <input type="checkbox"
+                               v-model="adaNeeded"
+                               @change="handleAdaCheckbox" />
                         Will you require special accommodation under the Americans with Disability Act (ADA) to participate in trainings?
                     </label>
 
                     <!-- ADA Confirmation Prompt -->
-                    <div v-if="showAdaPrompt && showAdaConfirm" class="ada-confirm-box">
+                    <div v-if="adaNeeded && showAdaConfirm" class="ada-confirm-box">
                         <p><strong>Are you sure you require ADA accommodations?</strong></p>
                         <div class="button-group">
                             <button @click="confirmAda">Yes, I need ADA</button>
@@ -90,7 +128,10 @@
                     <!-- ADA Details Textbox -->
                     <div v-if="adaNeeded" class="ada-details-box">
                         <label for="adaDetails"><strong>Please describe the accommodation:</strong></label>
-                        <textarea v-model="adaDetails" id="adaDetails" placeholder="Enter accommodation details..."></textarea>
+                        <textarea v-model="adaDetails"
+                                  id="adaDetails"
+                                  placeholder="Enter accommodation details..."
+                                  @keydown.stop></textarea>
                     </div>
                 </div>
 
@@ -120,16 +161,22 @@ export default {
             showNote1: false,
             showNote2: false,
             alreadyRegistered: false,
-            showAdaPrompt: false,
-            showAdaConfirm: false,
+            // ADA
             adaNeeded: false,
             adaDetails: "",
+            showAdaConfirm: false,     // only for first manual “turn on” flow
+            adaPrefilled: false,       // <-- flag so we don’t show confirm when prefilled
+
+            timeExpanded: false,
         };
     },
     computed: {
         hasPresenters() {
             return this.course.instructorLabel || this.course.instructor2Label;
+        }, needsTimeClamp() {
+            return (this.course?.courseTime?.length || 0) > 80;
         },
+       
         bannerStyle() {
             return {
                 backgroundImage: `url(${imagew})`,
@@ -139,22 +186,41 @@ export default {
             };
         }
     },
-    async mounted() {
-        document.addEventListener("keydown", this.handleKeydown);
+        async mounted() {
+            document.addEventListener("keydown", this.handleKeydown);
 
-        try {
-            const userId = localStorage.getItem("userId");
-            const res = await apiClient.get(`/Course/check-registered`, {
-                params: {
-                    userId,
-                    courseId: this.course.courseSysId
+            try {
+                const userId = localStorage.getItem("userId");
+                const res = await apiClient.get(`/Course/check-registered`, {
+                    params: {
+                        userId,
+                        courseId: this.course.courseSysId
+                    }
+                });
+
+                this.alreadyRegistered = !!res.data?.isRegistered;
+
+                // 1) If registered and we have course-level ADA, use that.
+                if (this.alreadyRegistered && res.data?.courseAda) {
+                    this.adaNeeded = !!res.data.courseAda.adaneed;
+                    this.adaDetails = res.data.courseAda.adadetails || "";
+                    this.adaPrefilled = this.adaNeeded;
+                    this.showAdaConfirm = false;
+                    return;
                 }
-            });
-            this.alreadyRegistered = res.data?.isRegistered;
-        } catch (err) {
-            console.error("Registration check failed:", err);
-        }
-    },
+
+                // 2) Otherwise, fall back to user profile ADA.
+                const ada = res.data?.userAda;
+                if (ada) {
+                    this.adaNeeded = !!ada.adaneed;
+                    this.adaDetails = ada.adadetails || "";
+                    this.adaPrefilled = this.adaNeeded;
+                    this.showAdaConfirm = false;
+                }
+            } catch (err) {
+                console.error("Registration check failed:", err);
+            }
+        },
     unmounted() {
         document.removeEventListener("keydown", this.handleKeydown);
     },
@@ -171,43 +237,67 @@ export default {
             this.handleRegister(this.selectedCourse);
         }
     },
-      registerCourse() {
-    const userId = localStorage.getItem("userId");
+        registerCourse() {
+            const userId = localStorage.getItem("userId");
+            if (!userId) {
+                this.$emit("request-login");
+                return;
+            }
 
-    if (!userId) {
-        this.$emit("request-login");
-        return;
-    }
-
-    this.$emit("register", {
-        ...this.course,
-        adaneed: this.adaNeeded,
-        adadetails: this.adaDetails
-    });
-},
+            this.$emit("register", {
+                ...this.course,
+                adaneed: this.adaNeeded,
+                adadetails: this.adaNeeded ? (this.adaDetails || null) : null
+            });
+        },
         handleAdaCheckbox() {
-    if (this.showAdaPrompt) {
-        this.showAdaConfirm = true;
-    } else {
-        // Reset if unchecked again
-        this.adaNeeded = false;
-        this.adaDetails = "";
-        this.showAdaConfirm = false;
-    }
-    },
-    confirmAda() {
-    this.adaNeeded = true;
-    this.showAdaConfirm = false;
-    },
-    cancelAda() {
-    this.showAdaPrompt = false;
-    this.adaNeeded = false;
-    this.adaDetails = "";
-    this.showAdaConfirm = false;
-    },
+            // If this state came from the server (prefilled), don’t show confirm
+            if (this.adaPrefilled) {
+                this.showAdaConfirm = false;
+                this.adaPrefilled = false; // only skip once; subsequent manual toggles work normally
+                return;
+            }
+
+            // User is toggling manually now
+            if (this.adaNeeded) {
+                // show confirm only when turning ON
+                this.showAdaConfirm = true;
+            } else {
+                // turning OFF clears details & confirm
+                this.showAdaConfirm = false;
+                this.adaDetails = "";
+            }
+        },
+        confirmAda() {
+            this.showAdaConfirm = false;
+        },
+        cancelAda() {
+            // user said “No”, revert toggle
+            this.adaNeeded = false;
+            this.adaDetails = "";
+            this.showAdaConfirm = false;
+        },
         handleKeydown(e) {
-            if (e.key === "k" || e.key === "K" || e.key === "Escape") {
+            // Don't react to keys typed inside form fields/contenteditable
+            const tag = (e.target?.tagName || "").toLowerCase();
+            const isEditable =
+                tag === "input" ||
+                tag === "textarea" ||
+                tag === "select" ||
+                e.target?.isContentEditable;
+
+            if (isEditable) return;
+
+            // Close on Escape
+            if (e.key === "Escape") {
                 this.$emit("close");
+                return;
+            }
+
+            // Optional: only treat Ctrl/⌘ + K as a shortcut (but don't close the modal)
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+                e.preventDefault();
+                // do nothing (or open search, etc.)
             }
         },
         toggleNote(instructor) {
@@ -226,12 +316,12 @@ export default {
         },
     },
 };</script>
-
 <style scoped>
+    /* ===== Overlay & Shell ===== */
     .modal-overlay {
         position: fixed;
         inset: 0;
-        background-color: rgba(0, 0, 0, 0.6);
+        background: rgba(0,0,0,.6);
         display: flex;
         justify-content: center;
         align-items: center;
@@ -244,11 +334,12 @@ export default {
         max-height: 90vh;
         overflow-y: auto;
         border-radius: 12px;
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 8px 20px rgba(0,0,0,.15);
         font-family: 'Segoe UI', sans-serif;
         font-size: 16.5px;
     }
 
+    /* ===== Banner ===== */
     .modal-banner {
         background-color: #f1f3f6;
         padding: 20px 24px;
@@ -256,9 +347,8 @@ export default {
         border-top-right-radius: 12px;
         border-bottom: 1px solid #ddd;
         display: flex;
-        flex-wrap: wrap; 
-        justify-content: space-between;
         align-items: center;
+        gap: 12px;
         min-height: 120px;
     }
 
@@ -267,43 +357,88 @@ export default {
         font-weight: 600;
         color: #ebeff2;
         margin: 0;
-        word-break: break-word; 
-        max-width: 85%; 
-        white-space: normal; 
+        flex: 1 1 auto;
+    }
+
+    .banner-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-left: auto;
+    }
+
+    .btn-register-top {
+        padding: 8px 14px;
+        font-size: 15px;
+        border-radius: 6px;
+    }
+
+    .registered-pill {
+        background: rgba(56,142,60,.1);
+        color: #2e7d32;
+        border: 1px solid rgba(46,125,50,.25);
+        padding: 6px 10px;
+        border-radius: 9999px;
+        font-weight: 600;
+        font-size: 14px;
     }
 
     .close-btn {
-        font-size: 24px;
-        border: none;
-        background: none;
+        color: #fff;
+        background: rgba(0,0,0,.35);
+        border: 1px solid rgba(255,255,255,.7);
+        border-radius: 9999px;
+        width: 40px;
+        height: 40px;
+        font-size: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         cursor: pointer;
-        color: #888;
+        transition: background .15s ease, transform .08s ease;
+        box-shadow: 0 2px 8px rgba(0,0,0,.25);
     }
 
+        .close-btn:hover {
+            background: rgba(0,0,0,.5);
+            transform: translateY(-1px);
+        }
+
+        .close-btn:focus {
+            outline: 2px solid #fff;
+            outline-offset: 2px;
+        }
+
+    @media (hover:none) {
+        .close-btn:hover {
+            transform: none;
+        }
+    }
+
+    /* ===== Body ===== */
     .modal-body {
         position: relative;
         padding: 24px;
         display: flex;
         flex-direction: column;
         gap: 24px;
-        z-index: 1; /* Ensure content is on top */
+        z-index: 1;
     }
+
         .modal-body::before {
             content: "";
-            background-image: url('@/assets/imagewht.png'); /* Use correct path */
+            background-image: url('@/assets/imagewht.png');
             background-repeat: no-repeat;
             background-position: center;
             background-size: 300px auto;
-            opacity: 0.05; /* 👈 very light */
+            opacity: .05;
             position: absolute;
-            top: 0;
-            bottom: 0;
-            left: 0;
-            right: 0;
+            inset: 0;
             z-index: 0;
-            pointer-events: none; /* Makes it click-through */
+            pointer-events: none;
         }
 
+    /* ===== Sections ===== */
     .section-title {
         font-size: 18px;
         font-weight: 600;
@@ -313,14 +448,8 @@ export default {
         padding-bottom: 4px;
     }
 
-    .grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 16px;
-    }
-
     .multi-session-note {
-        background-color: #fff8e1;
+        background: #fff8e1;
         border-left: 4px solid #ffc107;
         padding: 12px 16px;
         border-radius: 6px;
@@ -336,8 +465,83 @@ export default {
         font-size: 16px;
     }
 
+    /* ===== Grids ===== */
+    .grid {
+        display: grid;
+        gap: 16px;
+    }
+
+    .grid-top {
+        grid-template-columns: repeat(5, minmax(180px, 1fr));
+        column-gap: 16px;
+        row-gap: 12px;
+    }
+
+    .grid-bottom {
+        grid-template-columns: repeat(4, minmax(180px, 1fr));
+        column-gap: 16px;
+        row-gap: 12px;
+    }
+
+        /* Tight label/value rows – removes the huge gap */
+        .grid-top > div,
+        .grid-bottom > div {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            flex-wrap: nowrap;
+            min-width: 0;
+        }
+
+            .grid-top > div strong,
+            .grid-bottom > div strong {
+                margin: 0;
+                white-space: nowrap;
+                font-weight: 700;
+            }
+
+    .value {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+
+    /* Responsive */
+    @media (max-width:1280px) {
+        .grid-top {
+            grid-template-columns: repeat(4, minmax(160px,1fr));
+        }
+    }
+
+    @media (max-width:1024px) {
+        .grid-top {
+            grid-template-columns: repeat(3, minmax(160px,1fr));
+        }
+
+        .grid-bottom {
+            grid-template-columns: repeat(3, minmax(160px,1fr));
+        }
+    }
+
+    @media (max-width:768px) {
+        .grid-top {
+            grid-template-columns: repeat(2, minmax(150px,1fr));
+        }
+
+        .grid-bottom {
+            grid-template-columns: repeat(2, minmax(150px,1fr));
+        }
+    }
+
+    @media (max-width:520px) {
+        .grid-top, .grid-bottom {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    /* ===== Presenter ===== */
     .presenter-name {
-        background-color: #f5f5f5;
+        background: #f5f5f5;
         padding: 10px 14px;
         border-radius: 6px;
         display: flex;
@@ -350,7 +554,7 @@ export default {
     }
 
     .presenter-note {
-        background-color: #fefefe;
+        background: #fefefe;
         padding: 10px 14px;
         margin-top: 6px;
         margin-left: 8px;
@@ -361,6 +565,7 @@ export default {
         color: #555;
     }
 
+    /* ===== Buttons ===== */
     .button-group {
         display: flex;
         justify-content: flex-end;
@@ -368,147 +573,40 @@ export default {
         margin-top: 12px;
     }
 
-    .btn-primary,
-    .btn-secondary {
+    .btn-primary, .btn-secondary {
         padding: 10px 20px;
         font-size: 16px;
         border-radius: 6px;
         font-weight: 600;
         cursor: pointer;
-        transition: background-color 0.2s ease;
+        transition: background-color .2s ease;
     }
 
     .btn-primary {
-        background-color: #388e3c;
-        color: white;
+        background: #388e3c;
+        color: #fff;
         border: none;
     }
 
         .btn-primary:hover {
-            background-color: #2e7d32;
+            background: #2e7d32;
         }
 
     .btn-secondary {
-        background-color: #e0e0e0;
+        background: #e0e0e0;
         color: #333;
         border: none;
     }
 
         .btn-secondary:hover {
-            background-color: #d0d0d0;
-        }
-    .modal-banner {
-        background-size: cover;
-        background-position: center;
-        background-repeat: no-repeat;
-        padding: 20px 24px;
-        border-top-left-radius: 12px;
-        border-top-right-radius: 12px;
-        border-bottom: 1px solid #ddd;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        min-height: 120px; /* Ensures visibility of image */
-    }
-    .modal-body {
-        padding: 24px;
-        display: flex;
-        flex-direction: column;
-        gap: 24px;
-        background-image: url('@/assets/imagewht.png'); 
-        background-repeat: no-repeat;
-        background-position: center 80px;
-        background-size: 300px auto;
-        opacity: 1;
-    }
-    .modal-body {
-        padding: 24px;
-        display: flex;
-        flex-direction: column;
-        gap: 24px;
-        position: relative; 
-        z-index: 1;
-    }
-
-    .background-logo {
-        content: "";
-        position: absolute;
-        top: 100px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 300px;
-        height: 300px;
-        background-image: url('@/assets/imagewht.png'); 
-        background-repeat: no-repeat;
-        background-size: contain;
-        background-position: center;
-        opacity: 0.07;
-        pointer-events: none;
-        z-index: 0;
-    }
-    .ada-checkbox {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-size: 15px;
-        margin-bottom: 10px;
-    }
-
-    .ada-confirm-box {
-        background: #fff3cd;
-        border-left: 4px solid #ffc107;
-        padding: 12px;
-        border-radius: 6px;
-        margin-top: 8px;
-    }
-
-    .ada-details-box {
-        margin-top: 12px;
-    }
-
-        .ada-details-box textarea {
-            width: 100%;
-            min-height: 80px;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            font-size: 15px;
-            resize: vertical;
-        }
-    .ada-confirm-box .button-group {
-        display: flex;
-        gap: 12px;
-        margin-top: 10px;
-        justify-content: flex-start;
-    }
-
-        .ada-confirm-box .button-group button {
-            padding: 10px 20px;
-            font-size: 15px;
-            font-weight: 600;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background-color 0.3s ease;
+            background: #d0d0d0;
         }
 
-            .ada-confirm-box .button-group button:first-child {
-                background-color: #1976d2; /* Primary Blue */
-                color: white;
-            }
+    /* ===== Description (rich HTML) ===== */
+    .description-inline {
+        margin: 12px 0;
+    }
 
-                .ada-confirm-box .button-group button:first-child:hover {
-                    background-color: #1565c0;
-                }
-
-            .ada-confirm-box .button-group button:last-child {
-                background-color: #eeeeee; /* Light Gray */
-                color: #333;
-            }
-
-                .ada-confirm-box .button-group button:last-child:hover {
-                    background-color: #d6d6d6;
-                }
     .rich-html-content {
         font-size: 15.5px;
         line-height: 1.7;
@@ -531,5 +629,153 @@ export default {
 
         .rich-html-content strong {
             font-weight: bold;
+        }
+
+    /* ===== ADA ===== */
+    .ada-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 15px;
+        margin-bottom: 10px;
+    }
+
+    .ada-confirm-box {
+        background: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 12px;
+        border-radius: 6px;
+        margin-top: 8px;
+    }
+
+        .ada-confirm-box .button-group {
+            justify-content: flex-start;
+        }
+
+            .ada-confirm-box .button-group button:first-child {
+                background: #1976d2;
+                color: #fff;
+            }
+
+                .ada-confirm-box .button-group button:first-child:hover {
+                    background: #1565c0;
+                }
+
+            .ada-confirm-box .button-group button:last-child {
+                background: #eee;
+                color: #333;
+            }
+
+                .ada-confirm-box .button-group button:last-child:hover {
+                    background: #d6d6d6;
+                }
+
+    .ada-details-box {
+        margin-top: 12px;
+    }
+
+        .ada-details-box textarea {
+            width: 100%;
+            min-height: 80px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 15px;
+            resize: vertical;
+        }
+    .time-text {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        line-height: 1.5;
+    }
+
+        .time-text.clamped {
+            -webkit-line-clamp: 2; /* ✅ show only 2 lines */
+            max-height: calc(1.5em * 2); /* fallback for some browsers */
+        }
+
+    .moreless {
+        background: none;
+        border: none;
+        padding: 0;
+        margin-left: 6px;
+        font: inherit;
+        color: #1976d2;
+        cursor: pointer;
+        text-decoration: underline;
+        white-space: nowrap;
+    }
+
+        .moreless:hover {
+            text-decoration: none;
+        }
+    /* === ADA (stronger, local-only) === */
+    .modal-content .ada-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 15px;
+        margin-bottom: 10px;
+    }
+
+    .modal-content .ada-confirm-box {
+        background: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 12px;
+        border-radius: 6px;
+        margin-top: 8px;
+    }
+
+        /* make ADA confirm buttons left-aligned and spaced, regardless of the global .button-group */
+        .modal-content .ada-confirm-box .button-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 10px;
+            justify-content: flex-start;
+        }
+
+            .modal-content .ada-confirm-box .button-group button {
+                padding: 10px 20px;
+                font-size: 15px;
+                font-weight: 600;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                transition: background-color .3s ease;
+            }
+
+                .modal-content .ada-confirm-box .button-group button:first-child {
+                    background: #1976d2;
+                    color: #fff;
+                }
+
+                    .modal-content .ada-confirm-box .button-group button:first-child:hover {
+                        background: #1565c0;
+                    }
+
+                .modal-content .ada-confirm-box .button-group button:last-child {
+                    background: #eee;
+                    color: #333;
+                }
+
+                    .modal-content .ada-confirm-box .button-group button:last-child:hover {
+                        background: #d6d6d6;
+                    }
+
+    .modal-content .ada-details-box {
+        margin-top: 12px;
+    }
+
+        .modal-content .ada-details-box textarea {
+            width: 100%;
+            min-height: 80px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 15px;
+            resize: vertical;
         }
 </style>
