@@ -31,73 +31,110 @@ namespace HIVTraining_Vue.Server.Controllers
     int? format = null,
     int? category = null,
     DateTime? fromDate = null,
-    DateTime? toDate = null
+    DateTime? toDate = null,
+    bool onlyActive = false
 )
         {
             try
             {
-                var query = from c in _context.Courses
-                            where c.Cancelled == false || c.Cancelled == null
-                            join s in _context.Sites on c.SiteSysId equals s.SiteSysId into siteJoin
-                            from s in siteJoin.DefaultIfEmpty()
+                var query =
+                    from c in _context.Courses
+                    join s in _context.Sites on c.SiteSysId equals s.SiteSysId into siteJoin
+                    from s in siteJoin.DefaultIfEmpty()
 
-                            join subj in _context.Subjects on c.SubjectSysId equals subj.SubjectSysId into subjectJoin
-                            join i1 in _context.Users on c.Instructor1 equals i1.UserSysId into i1Join
-                            from i1 in i1Join.DefaultIfEmpty()
+                    join subj in _context.Subjects on c.SubjectSysId equals subj.SubjectSysId into subjectJoin
+                    from subj in subjectJoin.DefaultIfEmpty()
 
-                            join i2 in _context.Users on c.Instructor2 equals i2.UserSysId into i2Join
-                            from i2 in i2Join.DefaultIfEmpty()
-                            from subj in subjectJoin.DefaultIfEmpty()
+                    join i1 in _context.Users on c.Instructor1 equals i1.UserSysId into i1Join
+                    from i1 in i1Join.DefaultIfEmpty()
 
-                            let regionName = (from r in _context.LkRegionCnties
-                                              where r.Code == c.Region
-                                              select r.Value).FirstOrDefault()
+                    join i2 in _context.Users on c.Instructor2 equals i2.UserSysId into i2Join
+                    from i2 in i2Join.DefaultIfEmpty()
 
-                            let categoryName = (from cat in _context.LkCategories
-                                                where cat.Code == c.ContractType
-                                                select cat.Value).FirstOrDefault()
+                    let regionName = (from r in _context.LkRegionCnties
+                                      where r.Code == c.Region
+                                      select r.Value).FirstOrDefault()
 
-                            select new
-                            {
-                                c.CourseSysId,
-                                c.SubjectSysId,
-                                c.SiteSysId,
-                                c.Format,
-                                c.ContractType,
-                                c.Instructor1,
-                                c.Instructor2,
-                                c.RegDeadLine,
-                                c.MaxSeats,
-                                c.CourseDate,
-                                c.EndDate,
-                                c.CourseTimeBegin,
-                                c.CourseTimeEnd,
-                                c.TrainingLocation,
-                                c.Deliverable,
-                                c.Information,
-                                c.Rtc,
-                                c.Coe,
-                                c.OtherFund,
-                                c.Hidden,
-                                c.Delivered,
-                                c.Approve,
-                                SubjectTitle = subj.CourseTitle ?? "N/A",
-                                SiteName = s.SiteName ?? "N/A",
-                                RegionLabel = regionName ?? "N/A",
-                                CategoryLabel = categoryName ?? "N/A",
-                                RegisteredCount = _context.UserCourses.Count(uc => uc.CourseSysId == c.CourseSysId && uc.Status == 1),
-                                InstructorLabel = (i1.FirstName + " " + (i1.Mi ?? "") + " " + i1.LastName).Trim(),
-                                Instructor2Label = (i2.FirstName + " " + (i2.Mi ?? "") + " " + i2.LastName).Trim()
-                            };
+                    let categoryName = (from cat in _context.LkCategories
+                                        where cat.Code == c.ContractType
+                                        select cat.Value).FirstOrDefault()
 
-                if (!string.IsNullOrEmpty(title))
+                    // computed badges
+                    let hasWaitlist = _context.UserCourses.Any(uc =>
+                        uc.CourseSysId == c.CourseSysId &&
+                        uc.Status == 1 &&                // registered
+                        uc.IsWaitlisted                  // is on waitlist
+                    )
+
+                    let hasAda = _context.UserCourses.Any(uc =>
+                        uc.CourseSysId == c.CourseSysId &&
+                        uc.Status == 1 &&                // registered
+                        (
+                            (uc.Adaneed ?? false) ||     // nullable bool
+                            !string.IsNullOrEmpty(uc.Adadetails)
+                        )
+                    )
+
+                    select new
+                    {
+                        c.CourseSysId,
+                        c.SubjectSysId,
+                        c.SiteSysId,
+                        c.Format,
+                        c.ContractType,
+                        c.Instructor1,
+                        c.Instructor2,
+                        c.RegDeadLine,
+                        c.MaxSeats,
+                        c.CourseDate,
+                        c.EndDate,
+                        c.CourseTimeBegin,
+                        c.CourseTimeEnd,
+                        c.TrainingLocation,
+                        c.Deliverable,
+                        c.Information,
+                        c.Rtc,
+                        c.Coe,
+                        c.OtherFund,
+                        c.Hidden,
+                        c.Delivered,
+                        c.Approve,
+                        c.Cancelled,
+
+                        SubjectTitle = subj.CourseTitle ?? "N/A",
+                        SiteName = s.SiteName ?? "N/A",
+                        RegionLabel = regionName ?? "N/A",
+                        CategoryLabel = categoryName ?? "N/A",
+
+                        RegisteredCount = _context.UserCourses.Count(uc =>
+    uc.CourseSysId == c.CourseSysId && uc.Status == 1 && !uc.IsWaitlisted),
+                        WaitlistCount = _context.UserCourses.Count(uc =>
+                            uc.CourseSysId == c.CourseSysId && uc.Status == 1 && uc.IsWaitlisted),
+                        // optionally:
+                        TotalRegistrations = _context.UserCourses.Count(uc =>
+                            uc.CourseSysId == c.CourseSysId && uc.Status == 1),
+
+                        InstructorLabel = (i1.FirstName + " " + (i1.Mi ?? "") + " " + i1.LastName).Trim(),
+                        Instructor2Label = (i2.FirstName + " " + (i2.Mi ?? "") + " " + i2.LastName).Trim(),
+
+                        HasWaitlist = hasWaitlist,
+                        HasAda = hasAda
+                    };
+
+                if (onlyActive)
+                    query = query.Where(c => c.Cancelled == false || c.Cancelled == null);
+
+                if (!string.IsNullOrWhiteSpace(title))
                     query = query.Where(c => c.SubjectTitle.Contains(title));
 
                 if (siteId.HasValue)
                     query = query.Where(c => c.SiteSysId == siteId.Value);
 
                 if (region.HasValue)
-                    query = query.Where(c => c.RegionLabel != null && c.RegionLabel != "N/A" && (from r in _context.LkRegionCnties where r.Code == region select r.Value).FirstOrDefault() == c.RegionLabel);
+                    query = query.Where(c => c.RegionLabel != null && c.RegionLabel != "N/A" &&
+                                             (from r in _context.LkRegionCnties
+                                              where r.Code == region
+                                              select r.Value).FirstOrDefault() == c.RegionLabel);
 
                 if (format.HasValue)
                     query = query.Where(c => c.Format == format.Value);
@@ -114,7 +151,8 @@ namespace HIVTraining_Vue.Server.Controllers
                 var total = await query.CountAsync();
 
                 var pagedCourses = await query
-                    .OrderByDescending(c => c.CourseDate)
+                    .OrderBy(c => c.Cancelled ?? false)   // active first
+                    .ThenByDescending(c => c.CourseDate)  // newest first
                     .Skip((page - 1) * pageSize)
                     .Take(pageSize)
                     .ToListAsync();
@@ -126,19 +164,77 @@ namespace HIVTraining_Vue.Server.Controllers
                 return StatusCode(500, $"Internal server error: {ex.Message}");
             }
         }
+        [HttpGet("counts")]
+        public async Task<IActionResult> GetCourseCounts([FromQuery] int courseId)
+        {
+            var course = await _context.Courses.FindAsync(courseId);
+            if (course == null) return NotFound();
+
+            var enrolled = await _context.UserCourses.CountAsync(uc =>
+                uc.CourseSysId == courseId && uc.Status == 1 && !uc.IsWaitlisted);
+
+            var waitlist = await _context.UserCourses.CountAsync(uc =>
+                uc.CourseSysId == courseId && uc.Status == 1 && uc.IsWaitlisted);
+
+            return Ok(new
+            {
+                courseId,
+                enrolledCount = enrolled,            // non-waitlisted
+                waitlistCount = waitlist,            // waitlisted
+                totalRegistrations = enrolled + waitlist,
+                maxSeats = course.MaxSeats,
+                hasWaitlist = waitlist > 0
+            });
+        }
+
         [HttpGet("courseWithSessions/{id}")]
         public async Task<IActionResult> GetCourseWithSessions(int id)
         {
-            var course = await _context.Courses
-                .Include(c => c.Subject)
-                .Include(c => c.Sessions) // 👈 Navigation now works
-                .FirstOrDefaultAsync(c => c.CourseSysId == id);
+            var c = await _context.Courses
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.CourseSysId == id);
 
-            if (course == null) return NotFound();
+            if (c == null) return NotFound(new { message = "Course not found" });
 
-            return Ok(course); // 👈 Directly return full course with sessions
+            var sessions = await _context.CourseSessions
+                .Where(s => s.CourseSysId == id)
+                .OrderBy(s => s.SessionDate)
+                .Select(s => new
+                {
+                    sessionDate = s.SessionDate,     // string/ISO is fine; frontend does split("T")[0]
+                    startTime = s.StartTime,       // frontend uses substring(0,5)
+                    endTime = s.EndTime,
+                    sessionUrl = s.SessionUrl
+                })
+                .ToListAsync();
+
+            // shape matches what your modal’s populateForm() reads
+            return Ok(new
+            {
+                c.CourseSysId,
+                c.SiteSysId,
+                c.Region,
+                c.SubjectSysId,
+                c.Instructor1,
+                c.Instructor2,
+                c.CourseDate,
+                c.EndDate,
+                c.CourseTimeBegin,
+                c.CourseTimeEnd,
+                c.RegDeadLine,
+                c.MaxSeats,
+                c.TrainingLocation,
+                c.Deliverable,
+                c.Format,
+                c.Rtc,
+                c.Coe,
+                c.OtherFund,
+                c.Hidden,
+                c.Information,
+                isMultiSession = c.IsMultiSession,  // your Vue reads c.isMultiSession
+                sessions                        // your Vue handles .sessions or .sessions.$values
+            });
         }
-
         [HttpPut("update/{id}")]
         public async Task<IActionResult> UpdateCourse(int id, [FromBody] CourseScheduleRequest request)
         {
@@ -198,22 +294,31 @@ namespace HIVTraining_Vue.Server.Controllers
             await _context.SaveChangesAsync();
 
             //  Handle waitlisted users if seats are available
-            if (existingCourse.MaxSeats.HasValue && existingCourse.MaxSeats > 0)
+            if (existingCourse.MaxSeats.HasValue && existingCourse.MaxSeats.Value > 0)
             {
-                var waitlistedUsers = await _context.UserCourses
-                    .Where(uc => uc.CourseSysId == id && uc.IsWaitlisted)
-                    .OrderBy(uc => uc.WaitlistNumber)
-                    .Take(existingCourse.MaxSeats.Value)
-                    .ToListAsync();
+                var registered = await _context.UserCourses.CountAsync(uc =>
+                    uc.CourseSysId == id && uc.Status == 1 && !uc.IsWaitlisted);
 
-                foreach (var userCourse in waitlistedUsers)
+                var seatsAvailable = existingCourse.MaxSeats.Value - registered;
+
+                if (seatsAvailable > 0)
                 {
-                    userCourse.IsWaitlisted = false;
-                    userCourse.WaitlistNumber = null;
-                    existingCourse.MaxSeats--; // Occupy the seat
-                }
+                    var toPromote = await _context.UserCourses
+                        .Where(uc => uc.CourseSysId == id && uc.Status == 1 && uc.IsWaitlisted)
+                        .OrderBy(uc => uc.WaitlistNumber)
+                        .Take(seatsAvailable)
+                        .ToListAsync();
 
-                await _context.SaveChangesAsync(); // Save waitlist updates
+                    foreach (var uc in toPromote)
+                    {
+                        uc.IsWaitlisted = false;
+                        uc.WaitlistNumber = null;
+                        uc.DateStatusChanged = DateTime.UtcNow;
+                        uc.DateModified = DateTime.UtcNow;
+                    }
+
+                    await _context.SaveChangesAsync();
+                }
             }
 
             return Ok(new { message = "Course updated successfully!" });
@@ -247,32 +352,73 @@ namespace HIVTraining_Vue.Server.Controllers
         [HttpPost("add-user-to-course")]
         public async Task<IActionResult> AddUserToCourse([FromBody] UserCourse request)
         {
-            if (request == null) return BadRequest("Invalid data.");
+            if (request == null || request.UserSysId == 0 || request.CourseSysId == 0)
+                return BadRequest("Invalid data.");
+
+            var course = await _context.Courses.FindAsync(request.CourseSysId);
+            if (course == null) return NotFound("Course not found.");
+
+            // ✅ Reconcile: if seats opened, promote from waitlist first
+            var _ = await PromoteFromWaitlistAsync(request.CourseSysId);
+
+            // Recompute capacity after reconciliation
+            bool hasCapacity = course.MaxSeats.HasValue && course.MaxSeats.Value > 0;
+            int registeredCount = await _context.UserCourses.CountAsync(uc =>
+                uc.CourseSysId == request.CourseSysId && uc.Status == 1 && !uc.IsWaitlisted);
+
+            bool goesOnWaitlist = !hasCapacity || registeredCount >= course.MaxSeats!.Value;
+
+            int? waitlistNumber = null;
+            if (goesOnWaitlist)
+            {
+                waitlistNumber = await _context.UserCourses
+                    .Where(uc => uc.CourseSysId == request.CourseSysId && uc.IsWaitlisted)
+                    .MaxAsync(uc => (int?)uc.WaitlistNumber) ?? 0;
+                waitlistNumber += 1;
+            }
 
             var existing = await _context.UserCourses
-                .FirstOrDefaultAsync(uc => uc.UserSysId == request.UserSysId && uc.CourseSysId == request.CourseSysId);
+                .FirstOrDefaultAsync(uc => uc.UserSysId == request.UserSysId &&
+                                           uc.CourseSysId == request.CourseSysId);
 
             if (existing != null)
             {
                 existing.Status = 1;
+                existing.IsWaitlisted = goesOnWaitlist;
+                existing.WaitlistNumber = goesOnWaitlist ? waitlistNumber : null;
                 existing.DateModified = DateTime.UtcNow;
                 existing.DateStatusChanged = DateTime.UtcNow;
-                existing.IsWaitlisted = false;
                 await _context.SaveChangesAsync();
-
-                return Ok(new { message = "User re-registered successfully!", token = existing.Token });
+            }
+            else
+            {
+                _context.UserCourses.Add(new UserCourse
+                {
+                    UserSysId = request.UserSysId,
+                    CourseSysId = request.CourseSysId,
+                    Status = 1,
+                    DateEntered = DateTime.UtcNow,
+                    DateModified = DateTime.UtcNow,
+                    DateStatusChanged = DateTime.UtcNow,
+                    Token = Guid.NewGuid(),
+                    IsWaitlisted = goesOnWaitlist,
+                    WaitlistNumber = waitlistNumber
+                });
+                await _context.SaveChangesAsync();
             }
 
-            request.DateEntered = DateTime.UtcNow;
-            request.DateModified = DateTime.UtcNow;
-            request.DateStatusChanged = DateTime.UtcNow;
-            request.Status = 1; // Registered
-            request.Token = Guid.NewGuid(); // Generate token
+            // Return fresh counts so the UI can reconcile precisely
+            var registered = await _context.UserCourses.CountAsync(uc =>
+                uc.CourseSysId == request.CourseSysId && uc.Status == 1 && !uc.IsWaitlisted);
+            var hasWaitlistNow = await _context.UserCourses.AnyAsync(uc =>
+                uc.CourseSysId == request.CourseSysId && uc.Status == 1 && uc.IsWaitlisted);
 
-            _context.UserCourses.Add(request);
-            await _context.SaveChangesAsync();
-
-            return Ok(new { message = "User added successfully!", token = request.Token });
+            return Ok(new
+            {
+                waitlist = goesOnWaitlist,
+                number = waitlistNumber,
+                counts = new { registeredCount = registered, maxSeats = course.MaxSeats, hasWaitlist = hasWaitlistNow }
+            });
         }
 
         [HttpGet("registered-user-status")]
@@ -302,8 +448,53 @@ namespace HIVTraining_Vue.Server.Controllers
 
             return Ok(userIds);
         }
+        // 🔹 Helper
+        private async Task<(bool promoted, bool waitlistStillExists)> PromoteFromWaitlistAsync(int courseId)
+        {
+            var course = await _context.Courses.FindAsync(courseId);
+            if (course == null) return (false, false);
 
-        // ✅ Add this to CourseAdminController.cs
+            if (!(course.MaxSeats.HasValue && course.MaxSeats.Value > 0))
+            {
+                // no capacity defined => nothing to promote
+                var stillHasWaitlist = await _context.UserCourses
+                    .AnyAsync(uc => uc.CourseSysId == courseId && uc.Status == 1 && uc.IsWaitlisted);
+                return (false, stillHasWaitlist);
+            }
+
+            var registeredCount = await _context.UserCourses.CountAsync(uc =>
+                uc.CourseSysId == courseId && uc.Status == 1 && !uc.IsWaitlisted);
+
+            var seatsAvailable = course.MaxSeats.Value - registeredCount;
+            if (seatsAvailable <= 0)
+            {
+                var stillHasWaitlist = await _context.UserCourses
+                    .AnyAsync(uc => uc.CourseSysId == courseId && uc.Status == 1 && uc.IsWaitlisted);
+                return (false, stillHasWaitlist);
+            }
+
+            var toPromote = await _context.UserCourses
+                .Where(uc => uc.CourseSysId == courseId && uc.Status == 1 && uc.IsWaitlisted)
+                .OrderBy(uc => uc.WaitlistNumber)
+                .Take(seatsAvailable)
+                .ToListAsync();
+
+            foreach (var uc in toPromote)
+            {
+                uc.IsWaitlisted = false;
+                uc.WaitlistNumber = null;
+                uc.DateStatusChanged = DateTime.UtcNow;
+                uc.DateModified = DateTime.UtcNow;
+            }
+
+            if (toPromote.Count > 0)
+                await _context.SaveChangesAsync();
+
+            var waitlistStillExists = await _context.UserCourses
+                .AnyAsync(uc => uc.CourseSysId == courseId && uc.Status == 1 && uc.IsWaitlisted);
+
+            return (toPromote.Count > 0, waitlistStillExists);
+        }
 
         [HttpPut("drop-user")]
         public async Task<IActionResult> DropUserFromCourse([FromBody] UserCourse request)
@@ -312,8 +503,9 @@ namespace HIVTraining_Vue.Server.Controllers
                 return BadRequest("Invalid request.");
 
             var userCourse = await _context.UserCourses
-                .FirstOrDefaultAsync(uc => uc.UserSysId == request.UserSysId && uc.CourseSysId == request.CourseSysId && uc.Status == 1);
-
+                .FirstOrDefaultAsync(uc => uc.UserSysId == request.UserSysId &&
+                                           uc.CourseSysId == request.CourseSysId &&
+                                           uc.Status == 1);
             if (userCourse == null)
                 return NotFound("User not found or already dropped.");
 
@@ -322,7 +514,32 @@ namespace HIVTraining_Vue.Server.Controllers
             userCourse.DateModified = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
-            return Ok(new { message = "User dropped successfully." });
+
+            // promote from waitlist (and report back)
+            var (promoted, waitlistStillExists) = await PromoteFromWaitlistAsync(request.CourseSysId);
+
+            return Ok(new
+            {
+                message = "User dropped successfully.",
+                promoted,               // true if someone moved off the waitlist into the class
+                waitlist = waitlistStillExists
+            });
+        }
+        [HttpPost("revert-cancel")]
+        public async Task<IActionResult> RevertCancel([FromBody] Course courseInput)
+        {
+            if (courseInput == null || courseInput.CourseSysId == 0)
+                return BadRequest("Invalid course id.");
+
+            var course = await _context.Courses.FindAsync(courseInput.CourseSysId);
+            if (course == null) return NotFound("Course not found");
+
+            course.Cancelled = false;
+            course.CancellReason = null; // optional – clear reason
+            course.DateModified = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+            return Ok(new { message = "Course cancellation reverted." });
         }
 
 

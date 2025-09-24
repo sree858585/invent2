@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
+using System.Data;
 
 namespace HIVTraining.Controllers
 {
@@ -174,69 +175,162 @@ namespace HIVTraining.Controllers
             return Ok(new { total, data });
         }
 
+        private Task<int> GetRegisteredCountAsync(int courseId) =>
+             _context.UserCourses.CountAsync(uc =>
+                 uc.CourseSysId == courseId &&
+                 uc.Status == 1 &&
+                 !uc.IsWaitlisted);
+
+        private async Task<int> GetNextWaitlistNumberAsync(int courseId)
+        {
+            var max = await _context.UserCourses
+                .Where(uc => uc.CourseSysId == courseId && uc.IsWaitlisted)
+                .MaxAsync(uc => (int?)uc.WaitlistNumber) ?? 0;
+            return max + 1;
+        }
+
+        // Promote from waitlist if seats are available
+        private async Task PromoteFromWaitlistAsync(int courseId)
+        {
+            var course = await _context.Courses.FindAsync(courseId);
+            if (course == null || !course.MaxSeats.HasValue || course.MaxSeats.Value <= 0)
+                return;
+
+            var registered = await GetRegisteredCountAsync(courseId);
+            var seatsAvailable = course.MaxSeats.Value - registered;
+            if (seatsAvailable <= 0) return;
+
+            var toPromote = await _context.UserCourses
+                .Where(uc => uc.CourseSysId == courseId && uc.Status == 1 && uc.IsWaitlisted)
+                .OrderBy(uc => uc.WaitlistNumber)
+                .Take(seatsAvailable)
+                .ToListAsync();
+
+            foreach (var uc in toPromote)
+            {
+                uc.IsWaitlisted = false;
+                uc.WaitlistNumber = null;
+                uc.DateStatusChanged = DateTime.UtcNow;
+                uc.DateModified = DateTime.UtcNow;
+            }
+
+            await _context.SaveChangesAsync();
+        }
+
 
         [HttpPost("register")]
         public async Task<IActionResult> RegisterCourse([FromBody] JsonElement body)
         {
-            var userId = body.GetProperty("userId").GetGuid();
-            var courseId = body.GetProperty("courseId").GetInt32();
-
-            bool adaNeed = body.TryGetProperty("adaneed", out var adaNeedProp) && adaNeedProp.GetBoolean();
-            string? adaDetails = body.TryGetProperty("adadetails", out var adaDetailsProp) ? adaDetailsProp.GetString() : null;
-
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == userId);
-            if (user == null)
-                return NotFound(new { message = "User not found" });
-
-            var course = await _context.Courses.FirstOrDefaultAsync(c => c.CourseSysId == courseId);
-            if (course == null)
-                return NotFound(new { message = "Course not found" });
-
-            bool isWaitlisted = course.MaxSeats == null || course.MaxSeats <= 0;
-            int? waitlistNumber = null;
-
-            if (isWaitlisted)
+            try
             {
-                waitlistNumber = await _context.UserCourses
-                    .Where(uc => uc.CourseSysId == courseId && uc.IsWaitlisted)
-                    .CountAsync() + 1;
+                if (!body.TryGetProperty("userId", out var userIdEl))
+                    return BadRequest(new { message = "Missing userId" });
+
+                var userIdStr = userIdEl.GetString();
+                if (string.IsNullOrWhiteSpace(userIdStr) || !Guid.TryParse(userIdStr, out var userGuid))
+                    return BadRequest(new { message = "Invalid userId" });
+
+                // accept either "courseId" or "courseSysId"
+                int courseId = 0;
+                if (body.TryGetProperty("courseId", out var cidEl)) courseId = cidEl.GetInt32();
+                if (courseId <= 0 && body.TryGetProperty("courseSysId", out var csidEl)) courseId = csidEl.GetInt32();
+                if (courseId <= 0) return BadRequest(new { message = "Missing or invalid courseId" });
+
+                bool adaNeed = body.TryGetProperty("adaneed", out var adaNeedProp) && adaNeedProp.GetBoolean();
+                string? adaDetails = body.TryGetProperty("adadetails", out var adaDetailsProp) ? adaDetailsProp.GetString() : null;
+
+                var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == userGuid);
+                if (user == null) return NotFound(new { message = "User not found" });
+
+                var strategy = _context.Database.CreateExecutionStrategy();
+                object? responsePayload = null;
+
+                await strategy.ExecuteAsync(async () =>
+                {
+                    await using var tx = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
+                    var course = await _context.Courses.FindAsync(courseId);
+                    if (course == null)
+                    {
+                        responsePayload = NotFound(new { message = "Course not found" });
+                        return;
+                    }
+
+                    // Prevent duplicate active registrations
+                    var existingActive = await _context.UserCourses
+                        .FirstOrDefaultAsync(uc => uc.UserSysId == user.UserSysId
+                                                && uc.CourseSysId == courseId
+                                                && uc.Status == 1);
+                    if (existingActive != null)
+                    {
+                        responsePayload = Ok(new
+                        {
+                            message = "Already registered.",
+                            waitlist = existingActive.IsWaitlisted,
+                            number = existingActive.WaitlistNumber
+                        });
+                        return;
+                    }
+
+                    // Capacity -> waitlist
+                    var hasCapacity = course.MaxSeats.HasValue && course.MaxSeats.Value > 0;
+                    var goesOnWaitlist = true;
+                    int? waitlistNumber = null;
+
+                    if (hasCapacity)
+                    {
+                        var registeredCount = await GetRegisteredCountAsync(courseId);
+                        goesOnWaitlist = registeredCount >= course.MaxSeats.Value;
+                    }
+
+                    if (goesOnWaitlist)
+                        waitlistNumber = await GetNextWaitlistNumberAsync(courseId);
+
+                    var userCourse = new UserCourse
+                    {
+                        UserSysId = user.UserSysId,
+                        CourseSysId = courseId,
+                        Status = 1,
+                        DateEntered = DateTime.UtcNow,
+                        DateStatusChanged = DateTime.UtcNow,
+                        DateModified = DateTime.UtcNow,
+                        Token = Guid.NewGuid(),
+                        Adaneed = adaNeed,
+                        Adadetails = adaNeed ? adaDetails : null,
+                        IsWaitlisted = goesOnWaitlist,
+                        WaitlistNumber = waitlistNumber
+                    };
+
+                    _context.UserCourses.Add(userCourse);
+
+                    // sync ADA to profile
+                    user.Adaneed = adaNeed;
+                    user.Adadetails = adaNeed ? adaDetails : null;
+                    user.DateModified = DateTime.UtcNow;
+
+                    await _context.SaveChangesAsync();
+                    await tx.CommitAsync();
+
+                    responsePayload = Ok(new
+                    {
+                        message = goesOnWaitlist ? "Added to waitlist." : "Registration successful.",
+                        waitlist = goesOnWaitlist,
+                        number = waitlistNumber
+                    });
+                });
+
+                // The delegate sets responsePayload to an IActionResult or null if it already returned
+                if (responsePayload is IActionResult result) return result;
+
+                // Fallback (shouldn’t happen)
+                return Ok(new { message = "Registration processed." });
             }
-
-            var userCourse = new UserCourse
+            catch (Exception ex)
             {
-                UserSysId = user.UserSysId,
-                CourseSysId = courseId,
-                Status = 1,
-                DateEntered = DateTime.UtcNow,
-                DateStatusChanged = DateTime.UtcNow,
-                Token = Guid.NewGuid(),
-                Adaneed = adaNeed,
-                Adadetails = adaNeed ? adaDetails : null,
-                IsWaitlisted = isWaitlisted,
-                WaitlistNumber = waitlistNumber
-            };
-
-            _context.UserCourses.Add(userCourse);
-
-            // ✅ Always sync ADA on the user profile to reflect latest choice
-            user.Adaneed = adaNeed;
-            user.Adadetails = adaNeed ? adaDetails : null;
-            user.DateModified = DateTime.UtcNow;
-
-            // Optional but explicit: mark as modified to avoid any tracking surprises
-            _context.Users.Update(user);
-
-            if (!isWaitlisted && course.MaxSeats.HasValue)
-                course.MaxSeats--;
-
-            await _context.SaveChangesAsync();
-
-            return Ok(new
-            {
-                message = isWaitlisted ? "Registered to waitlist." : "Registration successful.",
-                userAda = new { adaneed = user.Adaneed ?? false, adadetails = user.Adadetails }
-            });
+                return StatusCode(500, new { message = "Registration failed", detail = ex.Message });
+            }
         }
+
         [HttpGet("user-ada")]
         public async Task<IActionResult> GetUserAda([FromQuery] Guid userId)
         {
@@ -404,31 +498,59 @@ namespace HIVTraining.Controllers
         [HttpPost("drop")]
         public async Task<IActionResult> DropCourse([FromBody] JsonElement body)
         {
-            var userId = body.GetProperty("userId").GetGuid();
-            var courseId = body.GetProperty("courseId").GetInt32();
+            try
+            {
+                if (!body.TryGetProperty("userId", out var userIdEl))
+                    return BadRequest(new { message = "Missing userId" });
 
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == userId);
-            if (user == null)
-                return NotFound(new { message = "User not found" });
+                var userGuid = Guid.Parse(userIdEl.GetString() ?? string.Empty);
 
-            var course = await _context.Courses.FirstOrDefaultAsync(c => c.CourseSysId == courseId);
-            if (course == null)
-                return NotFound(new { message = "Course not found" });
+                int courseId = 0;
+                if (body.TryGetProperty("courseId", out var cidEl)) courseId = cidEl.GetInt32();
+                if (courseId <= 0 && body.TryGetProperty("courseSysId", out var csidEl)) courseId = csidEl.GetInt32();
+                if (courseId <= 0) return BadRequest(new { message = "Missing or invalid courseId" });
 
-            var userCourse = await _context.UserCourses.FirstOrDefaultAsync(uc => uc.UserSysId == user.UserSysId && uc.CourseSysId == courseId && uc.Status == 1);
-            if (userCourse == null)
-                return NotFound(new { message = "Registration not found or already dropped." });
+                var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == userGuid);
+                if (user == null) return NotFound(new { message = "User not found" });
 
-            userCourse.Status = 6; // 6 = Dropped
-            userCourse.DateStatusChanged = DateTime.UtcNow;
+                var strategy = _context.Database.CreateExecutionStrategy();
+                object? responsePayload = null;
 
-            // Increase the seats
-            if (course.MaxSeats.HasValue)
-                course.MaxSeats++;
+                await strategy.ExecuteAsync(async () =>
+                {
+                    await using var tx = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
 
-            await _context.SaveChangesAsync();
+                    var userCourse = await _context.UserCourses
+                        .FirstOrDefaultAsync(uc => uc.UserSysId == user.UserSysId && uc.CourseSysId == courseId && uc.Status == 1);
 
-            return Ok(new { message = "Course dropped successfully." });
+                    if (userCourse == null)
+                    {
+                        responsePayload = NotFound(new { message = "Registration not found or already dropped." });
+                        return;
+                    }
+
+                    userCourse.Status = 6; // Dropped
+                    userCourse.DateStatusChanged = DateTime.UtcNow;
+                    userCourse.DateModified = DateTime.UtcNow;
+
+                    await _context.SaveChangesAsync();
+
+                    // try to promote from waitlist now that a seat freed up
+                    await PromoteFromWaitlistAsync(courseId);
+
+                    await tx.CommitAsync();
+
+                    responsePayload = Ok(new { message = "Course dropped successfully." });
+                });
+
+                if (responsePayload is IActionResult result) return result;
+
+                return Ok(new { message = "Drop processed." });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Drop failed", detail = ex.Message });
+            }
         }
 
         [HttpGet("all")]
