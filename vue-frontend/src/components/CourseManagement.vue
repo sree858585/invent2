@@ -21,7 +21,7 @@
                     <option v-for="f in formats" :key="f.code" :value="f.code">{{ f.value }}</option>
                 </select>
                 <select v-model="filters.site">
-                    <option value="">All Sites</option> 
+                    <option value="">All Sites</option>
                     <option v-for="s in sites" :key="s.siteSysId" :value="s.siteSysId">{{ s.siteName }}</option>
                 </select>
                 <select v-model="filters.category">
@@ -45,44 +45,70 @@
                     <tr>
                         <th>Course Title</th>
                         <th>Training Center</th>
-                        <th>Course Date</th>
+                        <th>
+                            Course Date
+                            <button class="sort-btn" @click="toggleSort('courseDate')">
+                                <span v-if="sortField === 'courseDate' && sortOrder === 'asc'">▲</span>
+                                <span v-else-if="sortField === 'courseDate' && sortOrder === 'desc'">▼</span>
+                                <span v-else>⇅</span>
+                            </button>
+                        </th>
                         <th># Sign Up</th>
-                        <th>Delivered</th>
-                        <th>Actions</th>
-                        <th>Approval</th>
+                        <th>
+                            Delivered
+                            <button class="sort-btn" @click="toggleSort('delivered')">
+                                <span v-if="sortField === 'delivered' && sortOrder === 'asc'">▲</span>
+                                <span v-else-if="sortField === 'delivered' && sortOrder === 'desc'">▼</span>
+                                <span v-else>⇅</span>
+                            </button>
+                        </th>
+                        <th>Course Management</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="course in courses" :key="course.courseSysId">
-                        <td>
-                            <a href="#" class="link-highlight" @click.prevent="showCourseDetails(course)">
-                                {{ course.subjectTitle }}
-                            </a>
-                        </td>
+                        <tr v-for="course in sortedCourses"
+                        :key="course.courseSysId"
+                        :class="{'cancelled-row': course.cancelled === true}"
+                        :title="course.cancelled ? 'This course is cancelled' : ''">
+                            <td>
+                                <a href="#"
+                                   class="link-highlight"
+                                   @click.prevent="showCourseDetails(course)"
+                                   :class="{'strike': course.cancelled === true}">
+                                    {{ course.subjectTitle }}
+                                </a>
+
+                                <!-- existing cancelled pill -->
+                                <span v-if="course.cancelled" class="pill-cancelled">Cancelled</span>
+
+                                <!-- new sticker row -->
+                                <div class="sticker-row">
+                                    <span v-if="course.hasWaitlist"
+                                          class="sticker sticker-waitlist"
+                                          title="This course currently has a waitlist">
+                                        ⏳ Waitlist
+                                    </span>
+
+                                    <span v-if="course.hasAda"
+                                          class="sticker sticker-ada"
+                                          title="One or more attendees requested ADA services">
+                                        ♿ ADA
+                                    </span>
+                                </div>
+                            </td>
                         <td>{{ course.siteName }}</td>
                         <td>{{ formatDate(course.courseDate) }}</td>
-                        <td>{{ course.registeredCount ?? 0 }}</td>
-                        <td>
-                            <label class="toggle-switch">
-                                <input type="checkbox" :checked="course.delivered" @change="updateDelivered(course)" />
-                                <span class="slider"></span>
-                            </label>
-                        </td>
+                        <td>{{ formatSignups(course) }}</td>
+                            <td>{{ computedDelivered(course) ? 'Yes' : 'No' }}</td>
                         <td>
                             <div class="dropdown">
                                 <button class="dropdown-toggle"
-                                        @click.stop="toggleDropdown(course.courseSysId, $event)">
+                                        @click.stop="toggleDropdown(course.courseSysId, $event)"
+                                        :class="{'cancelled-btn': course.cancelled === true}"
+                                        :title="course.cancelled ? 'This course is cancelled - you can still manage it' : 'Manage course'">
                                     ⚙️ Manage
                                 </button>
-
-
                             </div>
-                        </td>
-                        <td>
-                            <label class="toggle-switch">
-                                <input type="checkbox" :checked="course.approve" @change="toggleApproval(course)" />
-                                <span class="slider"></span>
-                            </label>
                         </td>
                     </tr>
                 </tbody>
@@ -96,6 +122,20 @@
                 <a @click.prevent="openModal('cancel', getCourseById(activeDropdownCourseId))">🚫 Cancel</a>
                 <a @click.prevent="openModal('dropUser', getCourseById(activeDropdownCourseId))">📤 Drop User</a>
                 <a @click.prevent="openModal('email', getCourseById(activeDropdownCourseId))">📧 Email</a>
+                <a @click.prevent="openModal('attendance', getCourseById(activeDropdownCourseId))">📝 Attendance Management</a>
+                <div class="dropdown-approval">
+                    <span>Approval:</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox"
+                               :checked="getCourseById(activeDropdownCourseId)?.approve"
+                               @change="toggleApproval(getCourseById(activeDropdownCourseId))" />
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <a v-if="getCourseById(activeDropdownCourseId)?.cancelled"
+                   @click.prevent="revertCancel(getCourseById(activeDropdownCourseId))">
+                    ♻️ Revert Cancel
+                </a>
             </div>
             <!-- ⏩ Pagination -->
             <div class="pagination" v-if="totalPages > 1">
@@ -115,7 +155,7 @@
                 <p><strong>Training Center:</strong> {{ selectedCourse.siteName }}</p>
                 <p><strong>Location:</strong> {{ selectedCourse.trainingLocation }}</p>
                 <p><strong>Course Date:</strong> {{ formatDate(selectedCourse.courseDate) }}</p>
-                <p><strong>Delivered:</strong> {{ selectedCourse.delivered ? 'Yes' : 'No' }}</p>
+                <p><strong>Delivered:</strong> {{ computedDelivered(selectedCourse) ? 'Yes' : 'No' }}</p>
                 <p><strong>Approval:</strong> {{ selectedCourse.approve === true ? 'Yes' : (selectedCourse.approve === false ? 'No' : 'Pending') }}</p>
                 <button class="btn-danger" @click="selectedCourse = null">Close</button>
             </div>
@@ -138,6 +178,9 @@
                    @close="closeModal"
                    @user-changed="updateSignupCount" />
     <EmailUserModal v-if="modalType === 'email'" :course="modalCourse" @close="closeModal" />
+    <MarkAttendanceModal v-if="modalType === 'attendance'"
+                         :course="modalCourse"
+                         @close="closeModal" />
 </template>
 
 <script>import apiClient from "@/axios.js";
@@ -147,6 +190,7 @@
     import CancelCourseModal from "@/components/Modals/CancelCourseModal.vue";
     import DropUserModal from "@/components/Modals/DropUserModal.vue";
     import EmailUserModal from "@/components/Modals/EmailUsersModal.vue";
+    import MarkAttendanceModal from "@/components/Modals/MarkAttendanceModal.vue";
 
 
     export default {
@@ -157,7 +201,8 @@
             AddUserModal,
             CancelCourseModal,
             DropUserModal,
-            EmailUserModal },
+            EmailUserModal,
+            MarkAttendanceModal},
         data() {
             return {
                 isModalOpen: false,
@@ -189,6 +234,8 @@
                 sites: [],
                 categories: [],
                 dropdownOpen: null,
+                sortField: null,
+                sortOrder: null,
                 dropdownDirection: {}
             };
         },
@@ -211,16 +258,67 @@
             }
         },
         computed: {
-            totalPages() {
-                return Math.ceil(this.totalCourses / this.pageSize);
-            }
-        },
-        methods: {
+  sortedCourses() {
+    const arr = [...this.courses];
+    if (this.sortField) {
+      arr.sort((a, b) => {
+        let aVal, bVal;
+
+        if (this.sortField === 'courseDate') {
+          aVal = new Date(a.courseDate);
+          bVal = new Date(b.courseDate);
+        } else if (this.sortField === 'delivered') {
+          aVal = this.computedDelivered(a) ? 1 : 0;
+          bVal = this.computedDelivered(b) ? 1 : 0;
+        }
+
+        if (aVal < bVal) return this.sortOrder === 'asc' ? -1 : 1;
+        if (aVal > bVal) return this.sortOrder === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+    return arr;
+  },
+  totalPages() {
+    return Math.ceil(this.totalCourses / this.pageSize);
+  }
+},
+
+methods: {
+            toggleSort(field) {
+    if (this.sortField === field) {
+      // toggle asc -> desc -> clear
+      if (this.sortOrder === 'asc') this.sortOrder = 'desc';
+      else if (this.sortOrder === 'desc') {
+        this.sortField = null;
+        this.sortOrder = null;
+      } else this.sortOrder = 'asc';
+    } else {
+      this.sortField = field;
+      this.sortOrder = 'asc';
+    }
+  },
             handleCourseCancelled() {
   this.fetchCourses();
 },
             handleCourseUpdated() {
   this.fetchCourses(); 
+},
+formatSignups(course) {
+  const enrolled = Number.isFinite(course.enrolledCount ?? course.registeredCount)
+    ? (course.enrolledCount ?? course.registeredCount) : 0;
+  const waitlist = Number.isFinite(course.waitlistCount) ? course.waitlistCount : 0;
+  const total = Number.isFinite(course.totalRegistrations)
+    ? course.totalRegistrations
+    : (enrolled + waitlist);
+
+  const cap = (typeof course.maxSeats === 'number' && course.maxSeats > 0) ? course.maxSeats : null;
+
+  // ✅ Show total/max (e.g., 3/2)
+  if (cap) return `${total}/${cap}`;
+
+  // No cap → just show total (optionally add WL)
+  return waitlist > 0 ? `${total} (+${waitlist} WL)` : `${total}`;
 },
             handleClickOutside(event) {
                 const dropdown = document.querySelector(".dropdown-menu-portal");
@@ -237,18 +335,47 @@
             getCourseById(courseId) {
                 return this.courses.find(c => c.courseSysId === courseId);
             },
-            updateSignupCount({ courseSysId, delta }) {
-              const course = this.courses.find(c => c.courseSysId === courseSysId);
-              if (course && typeof course.registeredCount === 'number') {
-                course.registeredCount += delta;
-              }
-            },
+            async updateSignupCount({ courseSysId }) {
+  const c = this.courses.find(x => x.courseSysId === courseSysId);
+  if (!c) return;
+
+  try {
+    const { data } = await apiClient.get('/CourseAdmin/counts', { params: { courseId: courseSysId } });
+
+    // set all three so formatSignups can render accurately
+    if (typeof data?.enrolledCount === 'number') c.registeredCount = data.enrolledCount;
+    if (typeof data?.waitlistCount === 'number') c.waitlistCount = data.waitlistCount;
+    if (typeof data?.totalRegistrations === 'number') c.totalRegistrations = data.totalRegistrations;
+    if (typeof data?.hasWaitlist === 'boolean') c.hasWaitlist = data.hasWaitlist;
+    if (typeof data?.maxSeats === 'number' || data?.maxSeats === null) c.maxSeats = data.maxSeats;
+  } catch (e) {
+    console.warn('⚠️ Failed to refresh counts', e);
+  }
+},
             
             isNearBottom(event) {
                 const button = event.target.closest('.dropdown');
                 const rect = button.getBoundingClientRect();
                 return rect.bottom + 160 > window.innerHeight;
             },
+            async revertCancel(course) {
+  if (!course) return;
+  const ok = confirm(`Revert cancellation for "${course.subjectTitle}"?`);
+  if (!ok) return;
+
+  try {
+    await apiClient.post('/CourseAdmin/revert-cancel', { courseSysId: course.courseSysId });
+    // update local row immediately for snappy UI
+    course.cancelled = false;
+    this.activeDropdownCourseId = null;
+    this.dropdownStyle.display = 'none';
+    // and/or re-fetch to stay in sync with server
+    this.fetchCourses();
+  } catch (err) {
+    console.error('Failed to revert cancel:', err);
+    alert('Could not revert cancellation. Please try again.');
+  }
+},
             toggleDropdown(courseId, event) {
                 if (this.activeDropdownCourseId === courseId) {
                     this.activeDropdownCourseId = null;
@@ -270,7 +397,30 @@
                 };
 
                 this.activeDropdownCourseId = courseId;
-            },
+            },computedDelivered(course) {
+    if (!course) return false;
+    const endOrStart = course.endDate || course.courseDate;
+    if (!endOrStart) return !!course.delivered;
+    const isPast = new Date(endOrStart) < new Date();
+    return course.delivered === true || isPast;
+  },
+  async maybePersistAutoDelivered(course) {
+    const endOrStart = course.endDate || course.courseDate;
+    if (!endOrStart) return;
+    const isPast = new Date(endOrStart) < new Date();
+
+    if (isPast && course.delivered !== true) {
+      try {
+        await apiClient.put(`/CourseAdmin/updateDelivered/${course.courseSysId}`, {
+          ...course,
+          delivered: true
+        });
+        course.delivered = true; // update local row
+      } catch (e) {
+        console.error('❌ Failed to auto-persist delivered:', e);
+      }
+    }
+  },
             resetFilters() {
                 this.filters = {
                     title: "",
@@ -354,17 +504,7 @@
                 this.modalType = null;
                 this.modalCourse = null;
             },
-            async updateDelivered(course) {
-                try {
-                    const updatedCourse = { ...course, delivered: !course.delivered };
-                    await apiClient.put(`/CourseAdmin/updateDelivered/${course.courseSysId}`, updatedCourse);
-                    course.delivered = updatedCourse.delivered;
-                } catch (error) {
-                    console.error("Failed to update delivered status:", error);
-                    alert("Error updating delivered status.");
-                }
-            },
-
+            
             async updateApproval(course, value) {
                 try {
                     const updatedCourse = { ...course, approve: value };
@@ -759,4 +899,93 @@
             .dropdown-menu-portal a:hover {
                 background-color: #f2f2f2;
             }
+    .dropdown-approval {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 12px;
+        border-top: 1px solid #eee;
+        font-size: 14px;
+        color: #333;
+    }
+
+        .dropdown-approval span {
+            margin-right: 10px;
+        }
+    .cancelled-row {
+        background: #f5f5f5;
+        opacity: 0.65;
+    }
+
+    .link-highlight.strike {
+        text-decoration: line-through;
+        color: #666;
+    }
+
+    .pill-cancelled {
+        display: inline-block;
+        margin-left: 8px;
+        padding: 2px 8px;
+        font-size: 12px;
+        border-radius: 999px;
+        background: #ececec;
+        color: #555;
+        border: 1px solid #ddd;
+    }
+
+    .cancelled-btn {
+        background-color: #fcecec;
+        border-color: #f5b5b5;
+        color: #a94442;
+    }
+    .sort-btn {
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        margin-left: 6px;
+        font-size: 12px;
+        color: #555;
+    }
+
+        .sort-btn:hover {
+            color: #000;
+        }
+    .sticker-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 6px;
+        flex-wrap: wrap;
+    }
+
+    .sticker {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        border-radius: 999px;
+        border: 1px solid rgba(0,0,0,0.06);
+        backdrop-filter: blur(6px);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        letter-spacing: 0.2px;
+    }
+
+    .sticker-waitlist {
+        color: #7a3e00;
+        background: linear-gradient(180deg, #fff5e6, #ffe8c7);
+        border-color: #ffd9a1;
+    }
+
+    .sticker-ada {
+        color: #084c2e;
+        background: linear-gradient(180deg, #eafff5, #d5f7ea);
+        border-color: #bdeedc;
+    }
+
+    /* optional: subtle hover lift */
+    .sticker:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
 </style>

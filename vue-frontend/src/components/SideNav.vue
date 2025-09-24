@@ -108,7 +108,7 @@
                     </li>
 
                     <!-- ✅ ATTENDANCE MANAGEMENT: Only for Admin/Manager -->
-                    <li v-if="isUserLoggedIn && isAdminOrManager">
+                    <!--<li v-if="isUserLoggedIn && isAdminOrManager">
                         <div class="dropdown-header" @click="toggleSection('attendance')">
                             <span class="icon">📝</span>
                             <span v-show="isExpanded">Attendance Management</span>
@@ -118,7 +118,7 @@
                             <li><router-link to="/attendance/mark">Mark Attendance</router-link></li>
                             <li><router-link to="/attendance/view">View Attendance</router-link></li>
                         </ul>
-                    </li>
+                    </li>-->
 
 
                     <!-- ✅ ROLE MANAGEMENT: Only for Admin/Manager -->
@@ -166,7 +166,6 @@
 
                 },
                 userRole: localStorage.getItem("userRole") || "",
-                attendance: false,
                 isUserLoggedIn: !!localStorage.getItem("jwtToken"),
                 // NEW: course format selections
                 selectedFormats: ['all'],

@@ -96,6 +96,11 @@ export default {
     this.registeredUserStatus = [];
   }
 },
+addUser(user) {
+  // open the confirmation modal and store the selected user
+  this.selectedUser = user;
+  this.showConfirmDialog = true;
+},
 
     async fetchUsers() {
       const params = {};
@@ -125,38 +130,37 @@ isDropped(userId) {
   return entry?.status === 6;
 },
 
-    async addUser(user) {
-      this.selectedUser = user;
-      this.showConfirmDialog = true;
-    },
-
     async confirmAddUser() {
-      try {
-        const payload = {
-          userSysId: this.selectedUser.userSysId,
-          courseSysId: this.course.courseSysId,
-          dateEntered: new Date().toISOString(),
-          dateModified: new Date().toISOString(),
-          status: 1,
-          dateStatusChanged: new Date().toISOString(),
-          hybrid: 0,
-          isWaitlisted: false
-        };
+  if (!this.selectedUser) return;
 
-        await apiClient.post('/CourseAdmin/add-user-to-course', payload);
-        this.showConfirmDialog = false;
-        this.showSuccessDialog = true;
+  try {
+    const res = await apiClient.post('/CourseAdmin/add-user-to-course', {
+      userSysId: this.selectedUser.userSysId,
+      courseSysId: this.course.courseSysId
+    });
 
-        this.$emit('user-changed', { courseSysId: this.course.courseSysId, delta: 1 });
+    const waitlisted = !!res.data?.waitlist;
+    const counts = res.data?.counts;
 
-        // ✅ Refresh registered list so UI reflects "Registered"
-        await this.fetchRegisteredUserIds();
-      } catch (err) {
-        console.error("❌ Failed to add user to course", err);
-        alert("Failed to add user. Please try again.");
-        this.showConfirmDialog = false;
-      }
-    },
+    // close confirm and show success
+    this.showConfirmDialog = false;
+    this.showSuccessDialog  = true;
+
+    // notify parent so the table row updates immediately
+    this.$emit('user-changed', {
+      courseSysId: this.course.courseSysId,
+      delta: waitlisted ? 0 : 1,
+      waitlist: counts?.hasWaitlist ?? waitlisted
+    });
+
+    await this.fetchRegisteredUserIds();
+  } catch (err) {
+    console.error("❌ Failed to add user to course", err);
+    alert("Failed to add user. Please try again.");
+    // keep the confirm dialog open, but you can also close it if you prefer:
+    // this.showConfirmDialog = false;
+  }
+},
 
     async closeSuccessDialog() {
       this.showSuccessDialog = false;
@@ -382,5 +386,9 @@ isDropped(userId) {
             opacity: 1;
             transform: scale(1);
         }
+    }
+    .modal-overlay.confirmation,
+    .modal-overlay.success {
+        z-index: 1001; /* above the base overlay (999) */
     }
 </style>

@@ -113,24 +113,36 @@ this.totalPages = Math.ceil(data.total / 15);
       this.showConfirmDialog = true;
     },
 
-    async confirmDropUser() {
-      try {
-        const payload = {
-          courseSysId: this.course.courseSysId,
-          userSysId: this.selectedUser.userSysId
-        };
+    // DropUserModal.vue
+async confirmDropUser() {
+  try {
+    const payload = {
+      courseSysId: this.course.courseSysId,
+      userSysId: this.selectedUser.userSysId
+    };
 
-        await apiClient.put('/CourseAdmin/drop-user', payload);
-        this.showConfirmDialog = false;
-        this.showSuccessDialog = true;
-        this.$emit('user-changed', { courseSysId: this.course.courseSysId, delta: -1 });
-        await this.fetchRegisteredUsers();
-      } catch (err) {
-        console.error('❌ Failed to drop user:', err);
-        alert('Failed to drop user.');
-        this.showConfirmDialog = false;
-      }
-    },
+    const res = await apiClient.put('/CourseAdmin/drop-user', payload);
+    const promoted = !!res.data?.promoted;
+    const waitlistStillExists = !!res.data?.waitlist;
+
+    this.showConfirmDialog = false;
+    this.showSuccessDialog = true;
+
+    // If someone got promoted, net registered stays the same (delta 0).
+    // Otherwise, it decreases by 1.
+    this.$emit('user-changed', {
+      courseSysId: this.course.courseSysId,
+      delta: promoted ? 0 : -1,
+      waitlist: waitlistStillExists   // keep the ⏳ sticker accurate
+    });
+
+    await this.fetchRegisteredUsers();
+  } catch (err) {
+    console.error('❌ Failed to drop user:', err);
+    alert('Failed to drop user.');
+    this.showConfirmDialog = false;
+  }
+},
 
     closeSuccessDialog() {
       this.showSuccessDialog = false;

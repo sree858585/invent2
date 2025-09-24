@@ -313,51 +313,74 @@
                     : [{ date: '', startTime: '', endTime: '', url: '' }];
             },
             async submitUpdate() {
-                try {
-                    const coursePayload = {
-                        ...this.originalCourse,
-                        siteSysId: this.form.trainingCenter,
-                        region: this.form.region,
-                        subjectSysId: this.form.courseTitle,
-                        instructor1: this.form.instructor1,
-                        instructor2: this.form.instructor2,
-                        courseDate: new Date(this.form.startDate).toISOString(),
-                        endDate: new Date(this.form.endDate).toISOString(),
-                        courseTimeBegin: new Date(`${this.form.startDate}T${this.form.startTime}:00Z`).toISOString(),
-                        courseTimeEnd: new Date(`${this.form.endDate}T${this.form.endTime}:00Z`).toISOString(),
-                        regDeadLine: new Date(this.form.regDeadline).toISOString(),
-                        maxSeats: this.form.maxSeats,
-                        trainingLocation: this.form.trainingLocation,
-                        deliverable: this.form.deliverables,
-                        format: this.form.format,
-                        rtc: this.form.fundingType === 'RTC',
-                        coe: this.form.fundingType === 'COE',
-                        otherFund: this.form.fundingType === 'Others',
-                        hidden: this.form.hideCourse,
-                        information: this.form.courseSchedule,
-                        isMultiSession: this.form.isMultiSession,
-                        dateModified: new Date().toISOString()
-                    };
-                    const requestPayload = {
-                        course: coursePayload,
-                        sessions: this.form.isMultiSession
-                            ? this.form.sessions.map(s => ({
-                                sessionDate: s.date,
-                                startTime: s.startTime,
-                                endTime: s.endTime,
-                                sessionUrl: s.url
-                            }))
-                            : []
-                    };
-                    const courseSysId = this.originalCourse.courseSysId;
-                    await apiClient.put(`/CourseAdmin/update/${courseSysId}`, requestPayload);
-                    alert("Course updated successfully!");
-                    this.$emit("updated");
-                    this.$emit("close");
-                } catch (err) {
-                    console.error("Error updating course:", err);
-                    alert("Failed to update course.");
-                }
+              try {
+                // coerce numbers
+                const n = v => (v === '' || v === null || v === undefined ? null : Number(v));
+
+                const coursePayload = {
+                  ...this.originalCourse,
+                  siteSysId: n(this.form.trainingCenter),
+                  region: n(this.form.region),
+                  subjectSysId: n(this.form.courseTitle),
+                  instructor1: n(this.form.instructor1),
+                  instructor2: n(this.form.instructor2),
+
+                  // dates: send ISO (entity has DateTime)
+                  courseDate: this.form.startDate ? new Date(this.form.startDate).toISOString() : null,
+                  endDate:    this.form.endDate   ? new Date(this.form.endDate).toISOString()   : null,
+
+                  // begin/end: your entity uses DateTime – keep ISO composed from date + time
+                  courseTimeBegin: (this.form.startDate && this.form.startTime)
+                    ? new Date(`${this.form.startDate}T${this.form.startTime}:00`).toISOString()
+                    : null,
+                  courseTimeEnd: (this.form.endDate && this.form.endTime)
+                    ? new Date(`${this.form.endDate}T${this.form.endTime}:00`).toISOString()
+                    : null,
+
+                  regDeadLine: this.form.regDeadline ? new Date(this.form.regDeadline).toISOString() : null,
+
+                  maxSeats: n(this.form.maxSeats),
+                  trainingLocation: this.form.trainingLocation || null,
+                  deliverable: n(this.form.deliverables),
+                  format: n(this.form.format),
+
+                  // booleans
+                  rtc: this.form.fundingType === 'RTC',
+                  coe: this.form.fundingType === 'COE',
+                  otherFund: this.form.fundingType === 'Others',
+                  hidden: !!this.form.hideCourse,
+
+                  information: this.form.courseSchedule || null,
+                  isMultiSession: !!this.form.isMultiSession,
+                  dateModified: new Date().toISOString()
+                };
+
+                // sessions: API expects { sessionDate: DateTime, startTime: "HH:mm", endTime: "HH:mm", sessionUrl }
+                const sessions = this.form.isMultiSession
+                  ? this.form.sessions
+                      .filter(s => s.date && s.startTime && s.endTime)
+                      .map(s => ({
+                        sessionDate: new Date(s.date).toISOString(),
+                        startTime: s.startTime,           // "HH:mm"
+                        endTime:   s.endTime,             // "HH:mm"
+                        sessionUrl: s.url || null
+                      }))
+                  : [];
+
+                const requestPayload = { course: coursePayload, sessions };
+
+                const courseSysId = this.originalCourse.courseSysId;
+                await apiClient.put(`/CourseAdmin/update/${courseSysId}`, requestPayload, {
+                  headers: { 'Content-Type': 'application/json' }
+                });
+
+                alert("Course updated successfully!");
+                this.$emit("updated");
+                this.$emit("close");
+              } catch (err) {
+                console.error("Error updating course:", err?.response?.data || err);
+                alert("Failed to update course.");
+              }
             }
         },
         watch: {
