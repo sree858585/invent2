@@ -2,30 +2,34 @@
     <div class="training-title-container">
         <div class="header">
             <h2>📘 Training Titles</h2>
-            <button class="btn-primary" @click="isModalOpen = true">➕ Create New Title</button>
         </div>
 
+        <!-- Centered CTA -->
+        <div class="cta-row">
+            <button class="btn-primary btn-cta" @click="isModalOpen = true">
+                ➕ Add New Title
+            </button>
+        </div>
+
+        <!-- Filters: only live title search -->
         <div class="filter-panel">
-            <div class="filter-group">
-                <input v-model="filters.title" placeholder="Search Title..." />
-                <select v-model="filters.category">
-                    <option value="">All Categories</option>
-                    <option v-for="c in categories" :key="c.code" :value="c.code">{{ c.value }}</option>
-                </select>
-                <button class="btn-search" @click="applyFilters">Search</button>
-                <button class="btn-secondary" @click="resetFilters">Reset</button>
+            <div class="filter-group single">
+                <input v-model="filters.title"
+                       placeholder="Search titles…"
+                       aria-label="Search titles" />
             </div>
         </div>
 
-        <CreateTitleModal v-if="isModalOpen" @close="isModalOpen = false" @created="onTitleCreated" />
+        <CreateTitleModal v-if="isModalOpen"
+                          @close="isModalOpen = false"
+                          @created="onTitleCreated" />
 
         <div class="table-wrapper" v-if="titles.length">
             <table class="modern-table">
                 <thead>
                     <tr>
                         <th>Course Title</th>
-                        <th>Category</th>
-                        <th>Actions</th>
+                        <th style="width:180px">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -33,7 +37,6 @@
                         <td class="truncate-cell" :title="title.courseTitle">
                             {{ title.courseTitle }}
                         </td>
-                        <td>{{ title.categoryName }}</td>
                         <td>
                             <button class="btn-action" @click="openEditModal(title)">✏️ Edit</button>
                             <button class="btn-danger" @click="openDeleteModal(title)">🗑 Delete</button>
@@ -50,7 +53,12 @@
         </div>
 
         <p v-else class="no-data">No training titles found.</p>
-        <EditTitleModal v-if="isEditModalOpen" :title="editTitle" @close="isEditModalOpen = false" @updated="onTitleUpdated" />
+
+        <EditTitleModal v-if="isEditModalOpen"
+                        :title="editTitle"
+                        @close="isEditModalOpen = false"
+                        @updated="onTitleUpdated" />
+
         <DeleteConfirmModal v-if="deleteModalOpen"
                             :title="deleteTitle"
                             @close="deleteModalOpen = false"
@@ -73,14 +81,14 @@
                 deleteModalOpen: false,
                 deleteTitle: null,
                 titles: [],
-                categories: [],
                 total: 0,
                 currentPage: 1,
                 pageSize: 10,
                 filters: {
-                    title: "",
-                    category: ""
-                }
+                    title: ""
+                },
+                // renamed to avoid vue/no-reserved-keys
+                searchTimer: null
             };
         },
         computed: {
@@ -89,8 +97,21 @@
             }
         },
         mounted() {
-            this.loadCategories();
             this.fetchTitles();
+        },
+        beforeUnmount() {
+            // clear any pending debounce on unmount
+            clearTimeout(this.searchTimer);
+        },
+        watch: {
+            // Live search with debounce (param removed to avoid no-unused-vars)
+            "filters.title"() {
+                clearTimeout(this.searchTimer);
+                this.searchTimer = setTimeout(() => {
+                    this.currentPage = 1;
+                    this.fetchTitles();
+                }, 300);
+            }
         },
         methods: {
             openDeleteModal(title) {
@@ -105,18 +126,12 @@
                 this.isEditModalOpen = false;
                 this.fetchTitles();
             },
-            async loadCategories() {
-                const res = await apiClient.get("/Lookup/categories");
-                this.categories = res.data?.$values ?? [];
-            },
             async fetchTitles() {
                 const params = {
                     page: this.currentPage,
                     pageSize: this.pageSize
                 };
-
                 if (this.filters.title?.trim()) params.title = this.filters.title.trim();
-                if (this.filters.category) params.category = this.filters.category;
 
                 const res = await apiClient.get("/TrainingTitle/paged", { params });
                 this.titles = res.data?.data?.$values || [];
@@ -132,16 +147,6 @@
                     console.error("❌ Failed to delete:", err);
                     alert("Error deleting title.");
                 }
-            },
-            applyFilters() {
-                this.currentPage = 1;
-                this.fetchTitles();
-            },
-            resetFilters() {
-                this.filters.title = "";
-                this.filters.category = "";
-                this.currentPage = 1;
-                this.fetchTitles();
             },
             onTitleCreated() {
                 this.isModalOpen = false;
@@ -165,9 +170,9 @@
 
     .header {
         display: flex;
-        justify-content: space-between;
+        justify-content: center; /* center the heading */
         align-items: center;
-        margin-bottom: 24px;
+        margin-bottom: 16px;
     }
 
         .header h2 {
@@ -177,6 +182,13 @@
             align-items: center;
             gap: 10px;
         }
+
+    /* Centered CTA row */
+    .cta-row {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 18px;
+    }
 
     .btn-primary {
         background-color: #4caf50;
@@ -193,49 +205,42 @@
             background-color: #388e3c;
         }
 
+    /* Bigger CTA */
+    .btn-cta {
+        padding: 14px 28px;
+        font-size: 18px;
+        border-radius: 12px;
+    }
+
+    /* Filters: only the search box now */
     .filter-panel {
         background: #f9fafb;
-        padding: 20px;
+        padding: 16px 20px;
         border-radius: 16px;
         margin-bottom: 24px;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
     }
 
-    .filter-group {
+    .filter-group.single {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 16px;
+        grid-template-columns: minmax(240px, 480px);
+        justify-content: center;
+        gap: 12px;
+        margin: 0 auto;
     }
 
-        .filter-group input,
-        .filter-group select {
-            padding: 10px 14px;
-            border: 1px solid #ccc;
-            border-radius: 12px;
-            font-size: 14px;
-            background: #fff;
-            transition: border 0.3s ease;
-        }
-
-            .filter-group input:focus,
-            .filter-group select:focus {
-                border-color: #4caf50;
-                outline: none;
-            }
-
-    .btn-search {
-        background-color: #007bff;
-        color: white;
-        padding: 10px 18px;
+    .filter-group input {
+        padding: 10px 14px;
+        border: 1px solid #ccc;
+        border-radius: 12px;
         font-size: 14px;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        transition: background 0.3s ease;
+        background: #fff;
+        transition: border 0.3s ease;
     }
 
-        .btn-search:hover {
-            background-color: #0056b3;
+        .filter-group input:focus {
+            border-color: #4caf50;
+            outline: none;
         }
 
     .table-wrapper {
@@ -308,8 +313,9 @@
                 cursor: not-allowed;
                 opacity: 0.5;
             }
+
     .truncate-cell {
-        max-width: 300px; /* or whatever fits your layout */
+        max-width: 520px; /* a bit wider since category column is gone */
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;

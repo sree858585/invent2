@@ -66,40 +66,40 @@
                     </tr>
                 </thead>
                 <tbody>
-                        <tr v-for="course in sortedCourses"
+                    <tr v-for="course in sortedCourses"
                         :key="course.courseSysId"
                         :class="{'cancelled-row': course.cancelled === true}"
                         :title="course.cancelled ? 'This course is cancelled' : ''">
-                            <td>
-                                <a href="#"
-                                   class="link-highlight"
-                                   @click.prevent="showCourseDetails(course)"
-                                   :class="{'strike': course.cancelled === true}">
-                                    {{ course.subjectTitle }}
-                                </a>
+                        <td>
+                            <a href="#"
+                               class="link-highlight"
+                               @click.prevent="openModal('view', course)"
+                               :class="{'strike': course.cancelled === true}">
+                                {{ course.subjectTitle }}
+                            </a>
 
-                                <!-- existing cancelled pill -->
-                                <span v-if="course.cancelled" class="pill-cancelled">Cancelled</span>
+                            <!-- existing cancelled pill -->
+                            <span v-if="course.cancelled" class="pill-cancelled">Cancelled</span>
 
-                                <!-- new sticker row -->
-                                <div class="sticker-row">
-                                    <span v-if="course.hasWaitlist"
-                                          class="sticker sticker-waitlist"
-                                          title="This course currently has a waitlist">
-                                        ⏳ Waitlist
-                                    </span>
+                            <!-- new sticker row -->
+                            <div class="sticker-row">
+                                <span v-if="course.hasWaitlist"
+                                      class="sticker sticker-waitlist"
+                                      title="This course currently has a waitlist">
+                                    ⏳ Waitlist
+                                </span>
 
-                                    <span v-if="course.hasAda"
-                                          class="sticker sticker-ada"
-                                          title="One or more attendees requested ADA services">
-                                        ♿ ADA
-                                    </span>
-                                </div>
-                            </td>
+                                <span v-if="course.hasAda"
+                                      class="sticker sticker-ada"
+                                      title="One or more attendees requested ADA services">
+                                    ♿ ADA
+                                </span>
+                            </div>
+                        </td>
                         <td>{{ course.siteName }}</td>
                         <td>{{ formatDate(course.courseDate) }}</td>
                         <td>{{ formatSignups(course) }}</td>
-                            <td>{{ computedDelivered(course) ? 'Yes' : 'No' }}</td>
+                        <td>{{ computedDelivered(course) ? 'Yes' : 'No' }}</td>
                         <td>
                             <div class="dropdown">
                                 <button class="dropdown-toggle"
@@ -148,7 +148,7 @@
         <p v-else class="no-data">No courses found.</p>
 
         <!-- Detail Modal -->
-        <div class="modal-overlay" v-if="selectedCourse && !modalType">
+        <!--<div class="modal-overlay" v-if="selectedCourse && !modalType">
             <div class="modal">
                 <h3>📘 View Course Details</h3>
                 <p><strong>Course Title:</strong> {{ selectedCourse.subjectTitle }}</p>
@@ -159,7 +159,7 @@
                 <p><strong>Approval:</strong> {{ selectedCourse.approve === true ? 'Yes' : (selectedCourse.approve === false ? 'No' : 'Pending') }}</p>
                 <button class="btn-danger" @click="selectedCourse = null">Close</button>
             </div>
-        </div>
+        </div>-->
     </div>
     <EditCourseModal v-if="modalType === 'edit'"
                      :course="modalCourse"
@@ -181,6 +181,9 @@
     <MarkAttendanceModal v-if="modalType === 'attendance'"
                          :course="modalCourse"
                          @close="closeModal" />
+    <ViewCourseDetailsModal v-if="modalType === 'view'"
+                            :course="modalCourse"
+                            @close="closeModal" />
 </template>
 
 <script>import apiClient from "@/axios.js";
@@ -191,6 +194,8 @@
     import DropUserModal from "@/components/Modals/DropUserModal.vue";
     import EmailUserModal from "@/components/Modals/EmailUsersModal.vue";
     import MarkAttendanceModal from "@/components/Modals/MarkAttendanceModal.vue";
+    import ViewCourseDetailsModal from "@/components/Modals/ViewCourseDetailsModal.vue";
+
 
 
     export default {
@@ -202,7 +207,9 @@
             CancelCourseModal,
             DropUserModal,
             EmailUserModal,
-            MarkAttendanceModal},
+            MarkAttendanceModal,
+          ViewCourseDetailsModal
+},
         data() {
             return {
                 isModalOpen: false,
