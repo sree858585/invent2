@@ -186,6 +186,27 @@ namespace HIVTraining_Vue.Server.Controllers
                 hasWaitlist = waitlist > 0
             });
         }
+        [HttpGet("ada-registrations")]
+        public async Task<IActionResult> GetAdaRegistrations([FromQuery] int courseId)
+        {
+            var query = from uc in _context.UserCourses
+                        join u in _context.Users on uc.UserSysId equals u.UserSysId
+                        where uc.CourseSysId == courseId
+                           && uc.Status == 1                       // registered
+                           && ((uc.Adaneed ?? false) || !string.IsNullOrEmpty(uc.Adadetails))
+                        orderby u.LastName, u.FirstName
+                        select new
+                        {
+                            userSysId = u.UserSysId,
+                            fullName = (u.FirstName + " " + (u.Mi ?? "") + " " + u.LastName).Trim(),
+                            email = u.Email,
+                            adaNeed = uc.Adaneed ?? false,
+                            adaDetails = uc.Adadetails
+                        };
+
+            var data = await query.ToListAsync();
+            return Ok(data);
+        }
 
         [HttpGet("courseWithSessions/{id}")]
         public async Task<IActionResult> GetCourseWithSessions(int id)
