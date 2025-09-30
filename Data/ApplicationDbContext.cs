@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Identity;
 
 namespace HIVTraining_Vue.Data
 {
-    public partial class ApplicationDbContext : IdentityDbContext<IdentityUser, IdentityRole, string>
+    public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityRole, string>
     {
         public ApplicationDbContext()
         {
@@ -146,6 +146,9 @@ namespace HIVTraining_Vue.Data
 
         public DbSet<CourseSession> CourseSessions { get; set; }
 
+        public DbSet<LkPronoun> LkPronouns { get; set; } = default!;
+        public DbSet<LkWorkLocation> LkWorkLocations { get; set; } = default!;
+
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -163,7 +166,19 @@ namespace HIVTraining_Vue.Data
                     .HasColumnName("LogID");
                 entity.Property(e => e.Message).HasColumnType("text");
             });
+            // Pronouns
+            modelBuilder.Entity<LkPronoun>(e =>
+            {
+                e.HasKey(x => x.PronounId);
+                e.Property(x => x.Value).IsRequired().HasMaxLength(100);
+            });
 
+            // WorkLocations
+            modelBuilder.Entity<LkWorkLocation>(e =>
+            {
+                e.HasKey(x => x.WorkLocationId);
+                e.Property(x => x.Name).IsRequired().HasMaxLength(150);
+            });
             modelBuilder.Entity<AspnetApplication>(entity =>
             {
                 entity.HasKey(e => e.ApplicationId)
@@ -1030,13 +1045,16 @@ namespace HIVTraining_Vue.Data
 
                 entity.Property(e => e.UserSysId).HasColumnName("UserSysID");
                 entity.Property(e => e.Active).HasDefaultValue(true);
+
                 entity.Property(e => e.Adadetails)
                     .HasComment("Special accommodations under the Americans with Disability Act (ADA)")
                     .HasColumnName("ADADetails");
+
                 entity.Property(e => e.Adaneed)
                     .HasDefaultValue(false)
                     .HasComment("Special accommodations under the Americans with Disability Act (ADA)")
                     .HasColumnName("ADANeed");
+
                 entity.Property(e => e.Address).HasMaxLength(100);
                 entity.Property(e => e.AltEmail).HasMaxLength(200);
                 entity.Property(e => e.CellPhone).HasMaxLength(20);
@@ -1047,25 +1065,56 @@ namespace HIVTraining_Vue.Data
                 entity.Property(e => e.Email).HasMaxLength(200);
                 entity.Property(e => e.FirstName).HasMaxLength(50);
                 entity.Property(e => e.LastName).HasMaxLength(50);
+
                 entity.Property(e => e.Mi)
                     .HasMaxLength(1)
                     .HasColumnName("MI");
+
                 entity.Property(e => e.Organization).HasMaxLength(100);
                 entity.Property(e => e.Phone).HasMaxLength(20);
-                entity.Property(e => e.Role).HasDefaultValueSql("([dbo].[GetRoleUniqueID]('user'))");
+
+                entity.Property(e => e.Role)
+                    .HasDefaultValueSql("([dbo].[GetRoleUniqueID]('user'))");
+
                 entity.Property(e => e.SiteSysId)
                     .HasDefaultValue(0)
                     .HasColumnName("SiteSysID");
+
                 entity.Property(e => e.State)
                     .HasMaxLength(2)
                     .IsFixedLength();
+
                 entity.Property(e => e.Title).HasMaxLength(50);
                 entity.Property(e => e.UserId).HasColumnName("UserID");
                 entity.Property(e => e.WorkPhone).HasMaxLength(20);
                 entity.Property(e => e.WorkPhoneExt).HasMaxLength(10);
+
                 entity.Property(e => e.Zip)
                     .HasMaxLength(10)
                     .HasColumnName("ZIP");
+
+                // ===== NEW FIELDS (add these in your User class too) =====
+
+                // Alt phone (optional)
+                entity.Property(e => e.AltPhone).HasMaxLength(20);
+
+                // Can receive texts flags (nullable bools are fine)
+                entity.Property(e => e.PrimaryCanText);
+                entity.Property(e => e.AltCanText);
+
+                // Pronouns FK
+                entity.Property(e => e.PronounId);
+                entity.HasOne(e => e.Pronoun)
+                    .WithMany()
+                    .HasForeignKey(e => e.PronounId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                // Work Location FK
+                entity.Property(e => e.WorkLocationId);
+                entity.HasOne(e => e.WorkLocation)
+                    .WithMany()
+                    .HasForeignKey(e => e.WorkLocationId)
+                    .OnDelete(DeleteBehavior.Restrict);
             });
 
             modelBuilder.Entity<UserCourse>(entity =>

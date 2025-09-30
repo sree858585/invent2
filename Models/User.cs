@@ -74,4 +74,15 @@ public partial class User
     /// Special accommodations under the Americans with Disability Act (ADA)
     /// </summary>
     public string? Adadetails { get; set; }
+    public int? PronounId { get; set; }          // FK to Lk_Pronouns
+    public int? WorkLocationId { get; set; }     // FK to Lk_WorkLocations
+
+    public bool? PrimaryCanText { get; set; }    // can primary phone receive texts?
+    public bool? AltCanText { get; set; }        // can alternative phone receive texts?
+
+    public string? AltPhone { get; set; }        // alternative phone (if you want it separate)
+
+    // (optional) nav props
+    public virtual LkPronoun? Pronoun { get; set; }
+    public virtual LkWorkLocation? WorkLocation { get; set; }
 }
