@@ -1,11 +1,13 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿// using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using HIVTraining_Vue.Data;
 using HIVTraining_Vue.Server.Models;
 using System;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Identity;
 
 namespace HIVTraining_Vue.Server.Controllers
 {
@@ -22,85 +24,171 @@ namespace HIVTraining_Vue.Server.Controllers
             _userManager = userManager;
         }
 
-        // ✅ GET: Get User by ID with Lookup Values
-        [HttpGet("{id}")]
-        public async Task<IActionResult> GetUserById(Guid id)
+        // ========= DTOs =========
+        public sealed class UserProfileDto
         {
-            Console.WriteLine($"Fetching user with ID: {id}");
+            public Guid? UserId { get; set; }
 
-            var user = await _context.Users
-                .Where(u => u.UserId == id)
-                .Select(u => new
-                {
-                    u.UserId,
-                    u.UserSysId,
-                    u.FirstName,
-                    u.Mi,
-                    u.LastName,
-                    u.Email,
-                    u.AltEmail,
-                    u.Title,
-                    u.Organization,
-                    u.Country,
+            // Names & Email
+            public string? FirstName { get; set; }
+            public string? Mi { get; set; }
+            public string? LastName { get; set; }
+            public string? Email { get; set; }
+            public string? AltEmail { get; set; }
 
-                    // 🔥 Fix: Use `Code` for lookup matching, and `Value` for display
-                    WorkSetting = _context.LkWorkSettings
-                        .Where(ws => ws.Code == u.WorkSetting)
-                        .Select(ws => ws.Value)
-                        .FirstOrDefault(),
+            // NEW fields (codes + labels)
+            public int? PronounId { get; set; }
+            public string? PronounLabel { get; set; }
 
-                    Education = _context.LkEducations
-                        .Where(e => e.Code == u.Education)
-                        .Select(e => e.Value)
-                        .FirstOrDefault(),
+            public int? WorkLocationId { get; set; }
+            public string? WorkLocationLabel { get; set; }
 
-                    Ethnicity = _context.LkEthnicities
-                        .Where(e => e.Code == u.Ethnicity)
-                        .Select(e => e.Value)
-                        .FirstOrDefault(),
+            public int? WorkSetting { get; set; }
+            public string? WorkSettingLabel { get; set; }
 
-                    Race = _context.LkRaces
-                        .Where(r => r.Code == u.Race)
-                        .Select(r => r.Value)
-                        .FirstOrDefault(),
+            public int? Ethnicity { get; set; }
+            public string? EthnicityLabel { get; set; }
 
-                    Occupation = _context.LkOccupations
-                        .Where(o => o.Code == u.Occupation)
-                        .Select(o => o.Value)
-                        .FirstOrDefault(),
+            public int? Race { get; set; }
+            public string? RaceLabel { get; set; }
 
-                    YearsCurrentOccupation = _context.LkYearsCurrentOccupations
-                        .Where(y => y.Code == u.YearsCurrentOccupation)
-                        .Select(y => y.Value)
-                        .FirstOrDefault(),
+            public int? Occupation { get; set; }
+            public string? OccupationLabel { get; set; }
 
-                    u.Address,
-                    u.City,
-                    u.State,
-                    u.Zip,
-                    u.Phone,
-                    u.CellPhone,
-                    u.WorkPhone,
-                    u.WorkPhoneExt,
-                    u.Role,
-                    u.Active,
-                    u.SiteSysId,
-                    u.DateEntered,
-                    u.DateModified,
-                    u.Adaneed,
-                    u.Adadetails
-                })
-                .FirstOrDefaultAsync();
-
-            if (user == null)
-            {
-                return NotFound(new { message = "User not found" });
-            }
-
-            return Ok(user);
+            // Phones + flags
+            public string? WorkPhone { get; set; }
+            public bool? PrimaryCanText { get; set; }
+            public string? CellPhone { get; set; }    // Alternate Phone
+            public bool? AltCanText { get; set; }
         }
 
-        // ✅ GET: Get All Users (for admin use)
+        public sealed class UserUpdateDto
+        {
+            // Only fields that can be edited from profile modal
+            [Required] public string FirstName { get; set; } = default!;
+            public string? Mi { get; set; }
+            [Required] public string LastName { get; set; } = default!;
+            [Required, EmailAddress] public string Email { get; set; } = default!;
+            [EmailAddress] public string? AltEmail { get; set; }
+
+            // lookup codes
+            public int? PronounId { get; set; }
+            public int? WorkLocationId { get; set; }
+            public int? WorkSetting { get; set; }
+            public int? Ethnicity { get; set; }
+            public int? Race { get; set; }
+            public int? Occupation { get; set; }
+
+            // phones + flags
+            [Required] public string WorkPhone { get; set; } = default!;
+            public bool? PrimaryCanText { get; set; }
+            public string? CellPhone { get; set; }
+            public bool? AltCanText { get; set; }
+        }
+
+        // ========= GET: User (codes + labels) =========
+        [HttpGet("{id:guid}")]
+        public async Task<IActionResult> GetUserById(Guid id)
+        {
+            var u = await _context.Users.AsNoTracking().FirstOrDefaultAsync(x => x.UserId == id);
+            if (u == null) return NotFound(new { message = "User not found" });
+
+            var dto = new UserProfileDto
+            {
+                UserId = u.UserId,   // Guid? -> Guid? OK
+
+                FirstName = u.FirstName,
+                Mi = u.Mi,
+                LastName = u.LastName,
+                Email = u.Email,
+                AltEmail = u.AltEmail,  
+
+                PronounId = u.PronounId,
+                // If your LkPronoun uses Name instead of Value, change to .Select(p => p.Name)
+                PronounLabel = await _context.LkPronouns
+                    .Where(p => p.PronounId == u.PronounId)
+                    .Select(p => p.Value)
+                    .FirstOrDefaultAsync(),
+
+                WorkLocationId = u.WorkLocationId,
+                // FIX: LkWorkLocation has Name (not Value)
+                WorkLocationLabel = await _context.LkWorkLocations
+                    .Where(w => w.WorkLocationId == u.WorkLocationId)
+                    .Select(w => w.Name)
+                    .FirstOrDefaultAsync(),
+
+                WorkSetting = u.WorkSetting,
+                WorkSettingLabel = await _context.LkWorkSettings
+                    .Where(ws => ws.Code == u.WorkSetting)
+                    .Select(ws => ws.Value)
+                    .FirstOrDefaultAsync(),
+
+                Ethnicity = u.Ethnicity,
+                EthnicityLabel = await _context.LkEthnicities
+                    .Where(e => e.Code == u.Ethnicity)
+                    .Select(e => e.Value)
+                    .FirstOrDefaultAsync(),
+
+                Race = u.Race,
+                RaceLabel = await _context.LkRaces
+                    .Where(r => r.Code == u.Race)
+                    .Select(r => r.Value)
+                    .FirstOrDefaultAsync(),
+
+                Occupation = u.Occupation,
+                OccupationLabel = await _context.LkOccupations
+                    .Where(o => o.Code == u.Occupation)
+                    .Select(o => o.Value)
+                    .FirstOrDefaultAsync(),
+
+                WorkPhone = u.WorkPhone,
+                PrimaryCanText = u.PrimaryCanText,
+
+                CellPhone = u.CellPhone,     // Alternate Phone
+                AltCanText = u.AltCanText
+            };
+
+            return Ok(dto);
+        }
+
+        // ========= PUT: Partial Update =========
+        [HttpPut("{id:guid}")]
+        public async Task<IActionResult> UpdateUser(Guid id, [FromBody] UserUpdateDto dto)
+        {
+            var u = await _context.Users.FirstOrDefaultAsync(x => x.UserId == id);
+            if (u == null) return NotFound(new { message = "User not found" });
+
+            // Basic requireds
+            u.FirstName = dto.FirstName;
+            u.Mi = string.IsNullOrWhiteSpace(dto.Mi) ? null : dto.Mi;
+            u.LastName = dto.LastName;
+            u.Email = dto.Email;
+            u.AltEmail = string.IsNullOrWhiteSpace(dto.AltEmail)
+    ? null
+    : dto.AltEmail;
+            // lookups (nullable)
+            u.PronounId = dto.PronounId;
+            u.WorkLocationId = dto.WorkLocationId;
+            u.WorkSetting = dto.WorkSetting;
+            u.Ethnicity = dto.Ethnicity;
+            u.Race = dto.Race;
+            u.Occupation = dto.Occupation;
+
+            // phones + flags
+            u.WorkPhone = dto.WorkPhone;
+            u.PrimaryCanText = dto.PrimaryCanText;
+            u.CellPhone = string.IsNullOrWhiteSpace(dto.CellPhone) ? null : dto.CellPhone;
+            u.AltCanText = dto.AltCanText;
+
+            u.DateModified = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            // return fresh projection with labels
+            return await GetUserById(id);
+        }
+
+        // (Optional) simple admin list
         [HttpGet]
         public async Task<IActionResult> GetAllUsers()
         {
@@ -110,43 +198,11 @@ namespace HIVTraining_Vue.Server.Controllers
                     u.UserId,
                     Name = u.FirstName + " " + (u.Mi ?? "") + " " + u.LastName,
                     u.Email,
-                    u.Organization,
-                    u.Phone
+                    u.WorkPhone
                 })
                 .ToListAsync();
 
             return Ok(users);
-        }
-
-        // ✅ PUT: Update User (For Future Use)
-        [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateUser(Guid id, [FromBody] User updatedUser)
-        {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == id);
-            if (user == null)
-                return NotFound(new { message = "User not found" });
-
-            user.FirstName = updatedUser.FirstName;
-            user.LastName = updatedUser.LastName;
-            user.Email = updatedUser.Email;
-            user.Address = updatedUser.Address;
-            user.City = updatedUser.City;
-            user.State = updatedUser.State;
-            user.Zip = updatedUser.Zip;
-            user.Phone = updatedUser.Phone;
-            user.WorkPhone = updatedUser.WorkPhone;
-            user.Organization = updatedUser.Organization;
-            user.Occupation = updatedUser.Occupation;
-            user.DateModified = DateTime.UtcNow;
-
-            _context.Users.Update(user);
-            await _context.SaveChangesAsync();
-
-            return Ok(new
-            {
-                message = "User updated successfully!",
-                userId = user.UserId.ToString()  // ✅ Return updated UserID (GUID)
-            });
         }
     }
 }
