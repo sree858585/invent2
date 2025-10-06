@@ -80,6 +80,28 @@
                             <span class="can-text">Can text? <strong>{{ yesNo(user.altCanText) }}</strong></span>
                         </td>
                     </tr>
+
+                    <!-- ADA (styled) -->
+                    <tr v-if="user.adaneed !== null && user.adaneed !== undefined"
+                        class="ada-row">
+                        <th>ADA Accommodations</th>
+                        <td>
+                            <span class="ada-badge"
+                                  :class="user.adaneed ? 'is-yes' : 'is-no'">
+                                {{ yesNo(user.adaneed) }}
+                            </span>
+                        </td>
+                    </tr>
+
+                    <tr v-if="user.adadetails && user.adadetails.trim() !== ''"
+                        class="ada-details-row">
+                        <th>ADA Details</th>
+                        <td>
+                            <div class="ada-details">
+                                {{ user.adadetails }}
+                            </div>
+                        </td>
+                    </tr>
                 </tbody>
             </table>
         </div>
@@ -178,15 +200,7 @@
                             </select>
                         </div>
 
-                        <div class="form-group">
-                            <label>Occupation</label>
-                            <select v-model.number="editUser.occupation">
-                                <option :value="null">Select Occupation</option>
-                                <option v-for="(label, code) in lookupMaps.occupations" :key="code" :value="toNum(code)">
-                                    {{ label }}
-                                </option>
-                            </select>
-                        </div>
+
 
                         <!-- Phones -->
                         <div class="form-group">
@@ -214,6 +228,45 @@
                                 <label><input type="radio" :value="false" v-model="editUser.altCanText" /> No</label>
                             </div>
                         </div>
+
+                        <div class="form-group">
+                            <label>Occupation</label>
+                            <select v-model.number="editUser.occupation">
+                                <option :value="null">Select Occupation</option>
+                                <option v-for="(label, code) in lookupMaps.occupations" :key="code" :value="toNum(code)">
+                                    {{ label }}
+                                </option>
+                            </select>
+                        </div>
+
+                        <!-- Accessibility (ADA) -->
+                        <div class="form-group form-group--section col-span-2">
+                            <label class="section-label">Accessibility (ADA)</label>
+
+                            <div class="inline-radio inline-radio-wrap">
+                                <label>
+                                    <input type="radio" :value="true" v-model="editUser.adaneed" />
+                                    Accommodations needed
+                                </label>
+                                <label>
+                                    <input type="radio" :value="false" v-model="editUser.adaneed" />
+                                    No accommodations needed
+                                </label>
+                                <label>
+                                    <input type="radio" :value="null" v-model="editUser.adaneed" />
+                                    Prefer not to say
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="form-group col-span-2" v-if="editUser.adaneed === true">
+                            <label>ADA Details (optional)</label>
+                            <textarea v-model.trim="editUser.adadetails"
+                                      rows="4"
+                                      placeholder="Tell us what you need (e.g., ASL interpretation, wheelchair access, large-print materials, etc.)"
+                                      class="textarea"></textarea>
+                        </div>
+
                     </div>
 
                     <!-- Bottom actions -->
@@ -248,6 +301,11 @@
                     occupations: {}
                 }
             };
+        },
+        watch: {
+            'editUser.adaneed'(v) {
+                if (v !== true) this.editUser.adadetails = ''; // live-clear in the UI
+            }
         },
 
         computed: {
@@ -371,7 +429,10 @@
                     primaryCanText: this.user.primaryCanText ?? null,
 
                     cellPhone: this.user.cellPhone || '',
-                    altCanText: this.user.altCanText ?? null
+                    altCanText: this.user.altCanText ?? null,
+
+                    adaneed: this.user.adaneed ?? null,
+                    adadetails: this.user.adadetails || ''
                 };
                 this.showEditModal = true;
             },
@@ -402,7 +463,14 @@
 
                         cellPhone: this.editUser.cellPhone || null,
                         altCanText: (this.editUser.altCanText === true || this.editUser.altCanText === false)
-                            ? this.editUser.altCanText : null
+                            ? this.editUser.altCanText : null,
+                        
+
+                        adaneed: this.editUser.adaneed,
+                        adadetails:
+                            this.editUser.adaneed === true && this.editUser.adadetails?.trim()
+                                ? this.editUser.adadetails.trim()
+                                : null
                     };
 
                     const { data } = await apiClient.put(`/user/${userId}`, payload);
@@ -718,4 +786,123 @@
     }
 
     /* Reuse your primary button style */
+    /* === ADA (profile table) === */
+    .ada-row td,
+    .ada-details-row td {
+        vertical-align: middle;
+    }
+
+    .ada-badge {
+        display: inline-block;
+        padding: 4px 10px;
+        font-size: 0.85rem;
+        font-weight: 800;
+        border-radius: 999px;
+        border: 1px solid transparent;
+        letter-spacing: .2px;
+    }
+
+        .ada-badge.is-yes {
+            background: #e6f7ef; /* soft green bg */
+            color: #0b6b3a; /* deep green text */
+            border-color: #bfe7d2;
+        }
+
+        .ada-badge.is-no {
+            background: #fff6f6; /* soft red bg */
+            color: #a11a1a; /* deep red text */
+            border-color: #f0c9c9;
+        }
+
+    .ada-details-row td .ada-details {
+        background: #f9fbff; /* soft blue bg */
+        border: 1px dashed #cfe0ff;
+        color: #24324a;
+        padding: 12px 14px;
+        border-radius: 10px;
+        line-height: 1.4;
+        white-space: pre-wrap; /* preserve line breaks */
+    }
+
+    /* Optional: visually group the two ADA rows */
+    .ada-row th,
+    .ada-details-row th {
+        position: relative;
+    }
+
+        .ada-row th::before,
+        .ada-details-row th::before {
+            content: "";
+            position: absolute;
+            left: -12px;
+            top: 10%;
+            bottom: 10%;
+            width: 4px;
+            border-radius: 8px;
+            background: linear-gradient(180deg, #87b5ff, #4e87ff);
+        }
+
+    /* === Modal (ADA inputs) === */
+    .form-group--section {
+        margin-top: 8px;
+        padding-top: 6px;
+        border-top: 1px dashed #e3e8f0;
+    }
+
+    .section-label {
+        font-size: 0.95rem;
+        color: #334155;
+    }
+
+    .textarea {
+        width: 100%;
+        border: 1px solid #dfe3eb;
+        background: #fff;
+        border-radius: 12px;
+        padding: 10px 12px;
+        font-size: 14px;
+        color: #1f2937;
+        transition: border-color .15s, box-shadow .15s, background-color .15s;
+        outline: none;
+        resize: vertical;
+        min-height: 96px;
+    }
+
+        .textarea:focus {
+            border-color: #0b3a82;
+            box-shadow: 0 0 0 3px rgba(11,58,130,.18);
+        }
+    /* Make any field span the full grid width */
+    .col-span-2 {
+        grid-column: 1 / -1;
+    }
+
+    /* Put a soft card feel around the ADA section */
+    .form-group--section {
+        margin-top: 10px;
+        padding: 14px 16px;
+        border: 1px dashed #e3e8f0;
+        border-radius: 12px;
+        background: #fbfdff;
+    }
+
+    /* Radio layout that wraps nicely on smaller screens */
+    .inline-radio-wrap {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px 22px; /* row gap / column gap */
+        margin-top: 6px;
+    }
+
+        .inline-radio-wrap label {
+            padding: 6px 10px;
+            border: 1px solid #e7ecf5;
+            border-radius: 10px;
+            background: #fff;
+        }
+
+    /* Keep ADA textarea visually grouped with the section above */
+    .col-span-2 + .col-span-2 .textarea {
+        margin-top: 6px;
+    }
 </style>
