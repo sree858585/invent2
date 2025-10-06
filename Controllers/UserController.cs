@@ -60,6 +60,9 @@ namespace HIVTraining_Vue.Server.Controllers
             public bool? PrimaryCanText { get; set; }
             public string? CellPhone { get; set; }    // Alternate Phone
             public bool? AltCanText { get; set; }
+
+            public bool? Adaneed { get; set; }
+            public string? Adadetails { get; set; }
         }
 
         public sealed class UserUpdateDto
@@ -84,6 +87,9 @@ namespace HIVTraining_Vue.Server.Controllers
             public bool? PrimaryCanText { get; set; }
             public string? CellPhone { get; set; }
             public bool? AltCanText { get; set; }
+
+            public bool? Adaneed { get; set; }
+            public string? Adadetails { get; set; }
         }
 
         // ========= GET: User (codes + labels) =========
@@ -145,7 +151,10 @@ namespace HIVTraining_Vue.Server.Controllers
                 PrimaryCanText = u.PrimaryCanText,
 
                 CellPhone = u.CellPhone,     // Alternate Phone
-                AltCanText = u.AltCanText
+                AltCanText = u.AltCanText,
+
+                Adaneed = u.Adaneed,
+                Adadetails = u.Adadetails
             };
 
             return Ok(dto);
@@ -179,6 +188,11 @@ namespace HIVTraining_Vue.Server.Controllers
             u.PrimaryCanText = dto.PrimaryCanText;
             u.CellPhone = string.IsNullOrWhiteSpace(dto.CellPhone) ? null : dto.CellPhone;
             u.AltCanText = dto.AltCanText;
+
+            u.Adaneed = dto.Adaneed;
+            u.Adadetails = (dto.Adaneed == true && !string.IsNullOrWhiteSpace(dto.Adadetails))
+                ? dto.Adadetails
+                : null;
 
             u.DateModified = DateTime.UtcNow;
 
