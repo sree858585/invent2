@@ -60,7 +60,7 @@
                                     <label :for="`fmt-${fmt.id}`">{{ fmt.label }}</label>
                                 </div>
 
-                                
+
                             </div>
                         </div>
                     </li>
@@ -109,29 +109,22 @@
 
                     <!-- ✅ ATTENDANCE MANAGEMENT: Only for Admin/Manager -->
                     <!--<li v-if="isUserLoggedIn && isAdminOrManager">
-                        <div class="dropdown-header" @click="toggleSection('attendance')">
-                            <span class="icon">📝</span>
-                            <span v-show="isExpanded">Attendance Management</span>
-                            <span class="dropdown-arrow" :class="{ rotated: sections.attendance }">▼</span>
-                        </div>
-                        <ul v-if="sections.attendance && isExpanded" class="dropdown-menu">
-                            <li><router-link to="/attendance/mark">Mark Attendance</router-link></li>
-                            <li><router-link to="/attendance/view">View Attendance</router-link></li>
-                        </ul>
-                    </li>-->
-
-
-                    <!-- ✅ ROLE MANAGEMENT: Only for Admin/Manager -->
+        <div class="dropdown-header" @click="toggleSection('attendance')">
+            <span class="icon">📝</span>
+            <span v-show="isExpanded">Attendance Management</span>
+            <span class="dropdown-arrow" :class="{ rotated: sections.attendance }">▼</span>
+        </div>
+        <ul v-if="sections.attendance && isExpanded" class="dropdown-menu">
+            <li><router-link to="/attendance/mark">Mark Attendance</router-link></li>
+            <li><router-link to="/attendance/view">View Attendance</router-link></li>
+        </ul>
+    </li>-->
+                    <!-- ✅ ROLE MANAGEMENT (Unified page for Admin + Manager) -->
                     <li v-if="isUserLoggedIn && isAdminOrManager">
-                        <div class="dropdown-header" @click="toggleSection('roles')">
+                        <router-link to="/role-management" class="nav-item-link">
                             <span class="icon">🛡️</span>
                             <span v-show="isExpanded">Role Management</span>
-                            <span class="dropdown-arrow" :class="{ rotated: sections.roles }">▼</span>
-                        </div>
-                        <ul v-if="sections.roles && isExpanded" class="dropdown-menu">
-                            <li><router-link to="/role-management/admins">🧑‍💼 Admin Roles</router-link></li>
-                            <li><router-link to="/role-management/managers">👔 Manager Roles</router-link></li>
-                        </ul>
+                        </router-link>
                     </li>
 
                     <!-- TEMP DEBUG: REMOVE AFTER VERIFICATION -->
