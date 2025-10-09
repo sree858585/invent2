@@ -16,206 +16,130 @@ namespace HIVTraining_Vue.Server.Controllers
             _context = context;
         }
 
-        [HttpGet("admins")]
-        public async Task<IActionResult> GetUsersWithAdminStatus(string? lastName = null, string? email = null, int page = 1, int pageSize = 10)
+        // GET: api/RoleManagement/users
+        // GET: api/RoleManagement/users
+        [HttpGet("users")]
+        public async Task<IActionResult> GetUsers(
+            string? name = null,
+            string? email = null,
+            int page = 1,
+            int pageSize = 10,
+            string sortBy = "name",   // "name" | "role"
+            string sortDir = "asc")   // "asc" | "desc"
         {
-            var adminRoleId = await _context.Roles
-                .Where(r => r.Name == "Admin")
-                .Select(r => r.Id)
-                .FirstOrDefaultAsync();
+            // Build once so EF translates everything to SQL
+            var q = _context.Users.Select(u => new
+            {
+                u.UserId,
+                u.FirstName,
+                u.LastName,
+                u.Email,
 
-            var managerRoleId = await _context.Roles
-                .Where(r => r.Name == "Manager")
-                .Select(r => r.Id)
-                .FirstOrDefaultAsync();
+                // Booleans done in SQL (no client eval)
+                IsAdmin = _context.UserRoles
+                    .Join(_context.Roles, ur => ur.RoleId, r => r.Id, (ur, r) => new { ur, r })
+                    .Any(x => x.ur.UserId == u.UserId.ToString() && x.r.Name == "Admin"),
 
-            if (string.IsNullOrEmpty(adminRoleId) || string.IsNullOrEmpty(managerRoleId))
-                return BadRequest("Required roles not found");
+                IsManager = _context.UserRoles
+                    .Join(_context.Roles, ur => ur.RoleId, r => r.Id, (ur, r) => new { ur, r })
+                    .Any(x => x.ur.UserId == u.UserId.ToString() && x.r.Name == "Manager"),
+            })
+            .Select(x => new
+            {
+                x.UserId,
+                x.FirstName,
+                x.LastName,
+                x.Email,
+                Role = x.IsAdmin ? "Admin" : x.IsManager ? "Manager" : "User",
+                RoleRank = x.IsAdmin ? 3 : x.IsManager ? 2 : 1  // User=1, Manager=2, Admin=3
+            });
 
-            var baseQuery = _context.Users
-                .Select(u => new
-                {
-                    u.UserSysId,
-                    u.UserId,
-                    u.FirstName,
-                    u.LastName,
-                    u.Email,
-                    IsAdmin = _context.UserRoles
-                        .Any(ur => ur.UserId == u.UserId.ToString() && ur.RoleId == adminRoleId),
-                    IsManager = _context.UserRoles
-                        .Any(ur => ur.UserId == u.UserId.ToString() && ur.RoleId == managerRoleId)
-                });
+            // Full-name search (First + Last) and email
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                var p = $"%{name.Trim()}%";
+                q = q.Where(x =>
+                    EF.Functions.Like((x.FirstName ?? "") + " " + (x.LastName ?? ""), p) ||
+                    EF.Functions.Like((x.LastName ?? "") + " " + (x.FirstName ?? ""), p));
+            }
+            if (!string.IsNullOrWhiteSpace(email))
+            {
+                var pe = $"%{email.Trim()}%";
+                q = q.Where(x => x.Email != null && EF.Functions.Like(x.Email, pe));
+            }
 
-            if (!string.IsNullOrEmpty(lastName))
-                baseQuery = baseQuery.Where(q => q.LastName != null && EF.Functions.Like(q.LastName, $"%{lastName}%"));
+            // Sorting
+            if (string.Equals(sortBy, "role", StringComparison.OrdinalIgnoreCase))
+            {
+                q = string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase)
+                    ? q.OrderByDescending(x => x.RoleRank).ThenBy(x => x.LastName).ThenBy(x => x.FirstName)
+                    : q.OrderBy(x => x.RoleRank).ThenBy(x => x.LastName).ThenBy(x => x.FirstName);
+            }
+            else // name
+            {
+                q = string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase)
+                    ? q.OrderByDescending(x => (x.FirstName ?? "") + " " + (x.LastName ?? ""))
+                    : q.OrderBy(x => (x.FirstName ?? "") + " " + (x.LastName ?? ""));
+            }
 
-            if (!string.IsNullOrEmpty(email))
-                baseQuery = baseQuery.Where(q => q.Email != null && EF.Functions.Like(q.Email, $"%{email}%"));
-
-            baseQuery = baseQuery.OrderByDescending(q => q.IsAdmin);
-
-            var total = await baseQuery.CountAsync();
-            var data = await baseQuery
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToListAsync();
+            var total = await q.CountAsync();
+            var data = await q.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
 
             return Ok(new { total, data });
         }
 
-        [HttpPost("assign-admin")]
-        public async Task<IActionResult> AssignAdmin([FromBody] Guid userId)
+        // local DTO (can be moved to its own file)
+        private sealed class RoleRow
         {
-            var adminRoleId = await _context.Roles
-                .Where(r => r.Name == "Admin")
-                .Select(r => r.Id)
-                .FirstOrDefaultAsync();
-
-            if (string.IsNullOrEmpty(adminRoleId))
-                return BadRequest("Admin role not found");
-
-            var stringUserId = userId.ToString();
-
-            bool alreadyAssigned = await _context.UserRoles
-                .AnyAsync(x => x.UserId == stringUserId && x.RoleId == adminRoleId);
-
-            if (alreadyAssigned)
-                return Ok("Already an admin");
-
-            _context.UserRoles.Add(new IdentityUserRole<string>
-            {
-                UserId = stringUserId,
-                RoleId = adminRoleId
-            });
-
-            await _context.SaveChangesAsync();
-            return Ok("Admin role assigned");
+            public Guid? UserId { get; set; }
+            public string FirstName { get; set; } = "";
+            public string LastName { get; set; } = "";
+            public string Email { get; set; } = "";
+            public string Role { get; set; } = "User";
+            public int RoleRank { get; set; } // User=0, Manager=1, Admin=2
         }
 
-        [HttpPost("remove-admin")]
-        public async Task<IActionResult> RemoveAdmin([FromBody] Guid userId)
+        public sealed class SetRoleDto
         {
-            var adminRoleId = await _context.Roles
-                .Where(r => r.Name == "Admin")
-                .Select(r => r.Id)
-                .FirstOrDefaultAsync();
-
-            if (string.IsNullOrEmpty(adminRoleId))
-                return BadRequest("Admin role not found");
-
-            var stringUserId = userId.ToString();
-
-            var entry = await _context.UserRoles
-                .FirstOrDefaultAsync(x => x.UserId == stringUserId && x.RoleId == adminRoleId);
-
-            if (entry == null)
-                return Ok("User is not an admin");
-
-            _context.UserRoles.Remove(entry);
-            await _context.SaveChangesAsync();
-
-            return Ok("Admin role removed");
+            public string Role { get; set; } = "User"; // "User" | "Manager" | "Admin"
         }
 
-        [HttpGet("managers")]
-        public async Task<IActionResult> GetUsersWithManagerStatus(string? lastName = null, string? email = null, int page = 1, int pageSize = 10)
+        // PUT: api/RoleManagement/{userId}/role
+        [HttpPut("{id:guid}/role")]
+        public async Task<IActionResult> SetRole(Guid id, [FromBody] SetRoleDto dto)
         {
-            var managerRoleId = await _context.Roles
-                .Where(r => r.Name == "Manager")
-                .Select(r => r.Id)
-                .FirstOrDefaultAsync();
+            var adminId = await _context.Roles.Where(r => r.Name == "Admin").Select(r => r.Id).FirstOrDefaultAsync();
+            var managerId = await _context.Roles.Where(r => r.Name == "Manager").Select(r => r.Id).FirstOrDefaultAsync();
 
-            var adminRoleId = await _context.Roles
-                .Where(r => r.Name == "Admin")
-                .Select(r => r.Id)
-                .FirstOrDefaultAsync();
+            if (string.IsNullOrEmpty(adminId) || string.IsNullOrEmpty(managerId))
+                return BadRequest("Roles 'Admin' and 'Manager' must exist.");
 
-            if (string.IsNullOrEmpty(managerRoleId) || string.IsNullOrEmpty(adminRoleId))
-                return BadRequest("Required roles not found");
+            var userStringId = id.ToString();
 
-            var baseQuery = _context.Users
-                .Select(u => new
-                {
-                    u.UserSysId,
-                    u.UserId,
-                    u.FirstName,
-                    u.LastName,
-                    u.Email,
-                    IsManager = _context.UserRoles
-                        .Any(ur => ur.UserId == u.UserId.ToString() && ur.RoleId == managerRoleId),
-                    IsAdmin = _context.UserRoles
-                        .Any(ur => ur.UserId == u.UserId.ToString() && ur.RoleId == adminRoleId)
-                });
-
-            if (!string.IsNullOrEmpty(lastName))
-                baseQuery = baseQuery.Where(q => q.LastName != null && EF.Functions.Like(q.LastName, $"%{lastName}%"));
-
-            if (!string.IsNullOrEmpty(email))
-                baseQuery = baseQuery.Where(q => q.Email != null && EF.Functions.Like(q.Email, $"%{email}%"));
-
-            baseQuery = baseQuery.OrderByDescending(q => q.IsManager);
-
-            var total = await baseQuery.CountAsync();
-            var data = await baseQuery
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
+            // remove existing Admin/Manager roles (single-role policy)
+            var existing = await _context.UserRoles
+                .Where(ur => ur.UserId == userStringId && (ur.RoleId == adminId || ur.RoleId == managerId))
                 .ToListAsync();
 
-            return Ok(new { total, data });
-        }
-
-        [HttpPost("assign-manager")]
-        public async Task<IActionResult> AssignManager([FromBody] Guid userId)
-        {
-            var managerRoleId = await _context.Roles
-                .Where(r => r.Name == "Manager")
-                .Select(r => r.Id)
-                .FirstOrDefaultAsync();
-
-            if (string.IsNullOrEmpty(managerRoleId))
-                return BadRequest("Manager role not found");
-
-            var stringUserId = userId.ToString();
-
-            bool alreadyAssigned = await _context.UserRoles
-                .AnyAsync(x => x.UserId == stringUserId && x.RoleId == managerRoleId);
-
-            if (alreadyAssigned)
-                return Ok("Already a manager");
-
-            _context.UserRoles.Add(new IdentityUserRole<string>
+            if (existing.Count > 0)
             {
-                UserId = stringUserId,
-                RoleId = managerRoleId
-            });
+                _context.UserRoles.RemoveRange(existing);
+            }
+
+            // If the chosen role is Admin/Manager, add it; if "User", we simply leave no row.
+            if (dto.Role == "Admin" || dto.Role == "Manager")
+            {
+                var targetRoleId = dto.Role == "Admin" ? adminId : managerId;
+
+                _context.UserRoles.Add(new IdentityUserRole<string>
+                {
+                    UserId = userStringId,
+                    RoleId = targetRoleId!
+                });
+            }
 
             await _context.SaveChangesAsync();
-            return Ok("Manager role assigned");
-        }
-
-        [HttpPost("remove-manager")]
-        public async Task<IActionResult> RemoveManager([FromBody] Guid userId)
-        {
-            var managerRoleId = await _context.Roles
-                .Where(r => r.Name == "Manager")
-                .Select(r => r.Id)
-                .FirstOrDefaultAsync();
-
-            if (string.IsNullOrEmpty(managerRoleId))
-                return BadRequest("Manager role not found");
-
-            var stringUserId = userId.ToString();
-
-            var entry = await _context.UserRoles
-                .FirstOrDefaultAsync(x => x.UserId == stringUserId && x.RoleId == managerRoleId);
-
-            if (entry == null)
-                return Ok("User is not a manager");
-
-            _context.UserRoles.Remove(entry);
-            await _context.SaveChangesAsync();
-
-            return Ok("Manager role removed");
+            return Ok(new { message = "Role updated", role = dto.Role });
         }
     }
 }
