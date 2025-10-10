@@ -8,21 +8,33 @@
             <input v-model="filters.name" placeholder="🔍 Search by Full Name" @input="debouncedFetch()" />
             <input v-model="filters.email" placeholder="✉️ Search by Email" @input="debouncedFetch()" />
         </div>
-
-        <table class="modern-table" v-if="users.length">
+        <div v-if="loading" class="skeleton-wrap">
+            <div class="skeleton-header">
+                <div class="skeleton-pill w-32"></div>
+                <div class="skeleton-pill w-48"></div>
+            </div>
+            <div class="skeleton-table">
+                <div class="skeleton-row" v-for="n in 8" :key="n">
+                    <span class="sk-cell w-56"></span>
+                    <span class="sk-cell w-60"></span>
+                    <span class="sk-cell w-40"></span>
+                    <span class="sk-cell w-24"></span>
+                    <span class="sk-cell w-28"></span>
+                </div>
+            </div>
+            <p class="loading-text">Loading users…</p>
+        </div>
+        <table class="modern-table" v-else-if="users.length">
             <thead>
                 <tr>
                     <th>Full Name</th>
                     <th>Email</th>
                     <th>Change Role</th>
                     <th>Locked</th>
-                    <!-- Renamed Actions -> Status + Role filter dropdown -->
                     <th style="width:220px;">
                         <div class="status-header">
                             <span>Status</span>
-                            <select class="role-filter"
-                                    v-model="filters.role"
-                                    @change="onRoleFilterChange">
+                            <select class="role-filter" v-model="filters.role">
                                 <option value="All">All</option>
                                 <option value="User">User</option>
                                 <option value="Manager">Manager</option>
@@ -134,6 +146,7 @@
                 filters: { name: '', email: '', role: 'All' },
                 saving: new Set(),
                 debounceTimer: null,
+                loading: false,
 
                 // role confirm state
                 showRoleConfirm: false,
@@ -167,14 +180,15 @@
                 this.fetchUsers();
               },
             async fetchUsers() {
-                const params = {
-                    name: this.filters.name,
-                    email: this.filters.email,
-                    role: this.filters.role, 
-                    page: this.currentPage,
-                    pageSize: this.pageSize
-                };
+                this.loading = true;
                 try {
+                    const params = {
+                        name: this.filters.name,
+                        email: this.filters.email,
+                        role: this.filters.role,
+                        page: this.currentPage,
+                        pageSize: this.pageSize
+                    };
                     const res = await apiClient.get('/RoleManagement/users', { params });
                     const list = res.data?.data?.$values ?? res.data?.data ?? [];
                     this.users = list.map(x => ({
@@ -188,6 +202,10 @@
                     this.totalUsers = res.data?.total || this.users.length;
                 } catch (e) {
                     console.error('Fetch users failed', e);
+                    this.users = [];           // optional: clear on error
+                    this.totalUsers = 0;
+                } finally {
+                    this.loading = false;
                 }
             },
 
@@ -546,5 +564,92 @@
         border-radius: 8px;
         font-size: 13px;
         background: #fff;
+    }
+    /* Loading skeleton */
+    .skeleton-wrap {
+        background: #fff;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 0 10px rgba(0,0,0,.05);
+    }
+
+    .skeleton-header {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 14px;
+    }
+
+    .skeleton-pill {
+        height: 14px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #eef2f7 25%, #f6f9ff 37%, #eef2f7 63%);
+        background-size: 400% 100%;
+        animation: shimmer 1.2s infinite;
+    }
+
+    .w-24 {
+        width: 96px;
+    }
+
+    .w-28 {
+        width: 112px;
+    }
+
+    .w-32 {
+        width: 128px;
+    }
+
+    .w-40 {
+        width: 160px;
+    }
+
+    .w-48 {
+        width: 192px;
+    }
+
+    .w-56 {
+        width: 224px;
+    }
+
+    .w-60 {
+        width: 240px;
+    }
+
+    .skeleton-table {
+        display: grid;
+        gap: 10px;
+    }
+
+    .skeleton-row {
+        display: grid;
+        grid-template-columns: 1.2fr 1.4fr 1fr 0.6fr 0.8fr;
+        gap: 14px;
+        align-items: center;
+    }
+
+    .sk-cell {
+        display: block;
+        height: 16px;
+        border-radius: 8px;
+        background: linear-gradient(90deg, #eef2f7 25%, #f6f9ff 37%, #eef2f7 63%);
+        background-size: 400% 100%;
+        animation: shimmer 1.2s infinite;
+    }
+
+    .loading-text {
+        margin-top: 14px;
+        text-align: center;
+        color: #64748b;
+        font-size: 14px;
+    }
+
+    @keyframes shimmer {
+        0% {
+            background-position: 100% 0;
+        }
+
+        100% {
+            background-position: 0 0;
+        }
     }
 </style>
