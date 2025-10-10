@@ -16,25 +16,10 @@
         <table class="modern-table" v-if="users.length">
             <thead>
                 <tr>
-                    <th class="sortable" @click="toggleSort('name')">
-                        Full Name
-                        <span class="sort-indicator" v-if="sort.by==='name'">{{ sort.dir==='asc' ? '▲' : '▼' }}</span>
-                    </th>
+                    <th>Full Name</th>
                     <th>Email</th>
                     <th>Role</th>
-
-                    <!-- Actions header with explicit sort button -->
-                    <th style="width:160px;">
-                        <div class="th-flex">
-                            Actions
-                            <button class="sort-btn"
-                                    @click.stop="toggleSort('role')"
-                                    :aria-label="`Sort by role ${sort.dir==='asc' ? 'ascending' : 'descending'}`">
-                                <span v-if="sort.by==='role'">{{ sort.dir==='asc' ? '▲' : '▼' }}</span>
-                                <span v-else>⇅</span>
-                            </button>
-                        </div>
-                    </th>
+                    <th style="width:160px;">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -68,85 +53,74 @@
 <script>import apiClient from '@/axios.js';
 
     export default {
-        name: 'RoleManagement',
-        data() {
-            return {
-                users: [],
-                totalUsers: 0,
-                currentPage: 1,
-                pageSize: 10,
-                filters: { name: '', email: '' },
-                sort: { by: 'name', dir: 'asc' }, // 'name' | 'role'
-                saving: new Set(),
-                debounceTimer: null,              
-            };
-        },
-        computed: {
-            totalPages() { return Math.ceil(this.totalUsers / this.pageSize); }
-        },
-        mounted() { this.fetchUsers(); },
-        beforeUnmount() {                    
-            if (this.debounceTimer) clearTimeout(this.debounceTimer);
-        },
-        methods: {
-            debouncedFetch() {
-                if (this.debounceTimer) clearTimeout(this.debounceTimer); 
-                this.debounceTimer = setTimeout(() => this.fetchUsers(), 300);
-            },
-            toggleSort(by) {
-                if (this.sort.by === by) {
-                    this.sort.dir = this.sort.dir === 'asc' ? 'desc' : 'asc';
-                } else {
-                    this.sort.by = by;
-                    this.sort.dir = 'asc';
-                }
-                this.fetchUsers();
-            },
-            async fetchUsers() {
-                const params = {
-                    name: this.filters.name,
-                    email: this.filters.email,
-                    page: this.currentPage,
-                    pageSize: this.pageSize,
-                    sortBy: this.sort.by,
-                    sortDir: this.sort.dir
-                };
-                try {
-                    const res = await apiClient.get('/RoleManagement/users', { params });
-                    const list = res.data?.data?.$values ?? res.data?.data ?? [];
-                    this.users = list.map(x => ({
-                        userId: x.userId,
-                        firstName: x.firstName ?? '',
-                        lastName: x.lastName ?? '',
-                        email: x.email ?? '',
-                        role: x.role ?? 'User'
-                    }));
-                    this.totalUsers = res.data?.total || this.users.length;
-                } catch (e) {
-                    console.error('Fetch users failed', e);
-                }
-            },
-            async saveRole(user) {
-                if (this.saving.has(user.userId)) return;
-                this.saving.add(user.userId);
-                const previous = user.role;
-                try {
-                    await apiClient.put(`/RoleManagement/${user.userId}/role`, { role: user.role });
-                } catch (e) {
-                    console.error('Update role failed', e);
-                    user.role = previous;
-                    alert('Failed to update role.');
-                } finally {
-                    this.saving.delete(user.userId);
-                }
-            },
-            changePage(p) {
-                if (p < 1 || p > this.totalPages) return;
-                this.currentPage = p;
-                this.fetchUsers();
-            }
-        }
-    };</script>
+  name: 'RoleManagement',
+  data() {
+    return {
+      users: [],
+      totalUsers: 0,
+      currentPage: 1,
+      pageSize: 10,
+      filters: { name: '', email: '' },
+      saving: new Set(),
+      debounceTimer: null,
+    };
+  },
+  computed: {
+    totalPages() { return Math.ceil(this.totalUsers / this.pageSize); }
+  },
+  mounted() { this.fetchUsers(); },
+  beforeUnmount() { if (this.debounceTimer) clearTimeout(this.debounceTimer); },
+  methods: {
+    debouncedFetch() {
+      if (this.debounceTimer) clearTimeout(this.debounceTimer);
+      this.debounceTimer = setTimeout(() => {
+        this.currentPage = 1;
+        this.fetchUsers();
+      }, 300);
+    },
+    async fetchUsers() {
+      const params = {
+        name: this.filters.name,
+        email: this.filters.email,
+        page: this.currentPage,
+        pageSize: this.pageSize
+      };
+      try {
+        const res = await apiClient.get('/RoleManagement/users', { params });
+        const list = res.data?.data?.$values ?? res.data?.data ?? [];
+        this.users = list.map(x => ({
+          userId: x.userId,
+          firstName: x.firstName ?? '',
+          lastName: x.lastName ?? '',
+          email: x.email ?? '',
+          role: x.role ?? 'User'
+        }));
+        this.totalUsers = res.data?.total || this.users.length;
+      } catch (e) {
+        console.error('Fetch users failed', e);
+      }
+    },
+    async saveRole(user) {
+      if (this.saving.has(user.userId)) return;
+      this.saving.add(user.userId);
+      const previous = user.role;
+      try {
+        await apiClient.put(`/RoleManagement/${user.userId}/role`, { role: user.role });
+      } catch (e) {
+        console.error('Update role failed', e);
+        user.role = previous;
+        alert('Failed to update role.');
+      } finally {
+        this.saving.delete(user.userId);
+      }
+    },
+    changePage(p) {
+      if (p < 1 || p > this.totalPages) return;
+      this.currentPage = p;
+      this.fetchUsers();
+    }
+  }
+};</script>
 
 <style scoped>
     .roles-container {
