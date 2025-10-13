@@ -1,9 +1,11 @@
 ﻿<template>
     <div class="modal-overlay">
-        <div class="modal">
+        <div class="modal" role="dialog" aria-modal="true">
+            <button class="icon-close danger modal-close" @click="$emit('close')" aria-label="Close">✖</button>
             <h2>Add New Training Center</h2>
             <form @submit.prevent="submit">
                 <div class="form-grid">
+                    <!-- Remote Site -->
                     <div class="form-group checkbox-group full-width">
                         <label>
                             <input type="checkbox" v-model="isRemoteSite" /> Remote Site
@@ -16,24 +18,90 @@
                         </select>
                     </div>
 
-                    <div class="form-group"><label>Training Center Name *</label><input v-model="form.siteName" required /></div>
-                    <div class="form-group"><label>Short Name</label><input v-model="form.shortName" /></div>
-                    <div class="form-group"><label>Description</label><input v-model="form.description" /></div>
-                    <div class="form-group"><label>Address</label><input v-model="form.address" /></div>
-                    <div class="form-group"><label>Address 2</label><input v-model="form.address2" /></div>
-                    <div class="form-group"><label>City</label><input v-model="form.city" /></div>
+                    <!-- Basics -->
+                    <div class="form-group">
+                        <label>Training Center Name *</label>
+                        <input v-model="form.siteName" required />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Short Name</label>
+                        <input v-model="form.shortName" />
+                    </div>
+
+                    <!-- (Description removed from here) -->
+
+                    <div class="form-group">
+                        <label>Address</label>
+                        <input v-model="form.address" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Address 2</label>
+                        <input v-model="form.address2" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>City</label>
+                        <input v-model="form.city" />
+                    </div>
+
                     <div class="form-group">
                         <label>State (2-letter code)</label>
-                        <input v-model="form.state" maxlength="2" @input="form.state = form.state.toUpperCase()" placeholder="e.g., NY" />
+                        <input v-model="form.state"
+                               maxlength="2"
+                               @input="form.state = form.state.toUpperCase()"
+                               placeholder="e.g., NY" />
                     </div>
-                    <div class="form-group"><label>Zip</label><input v-model="form.zip" /></div>
 
-                    <div class="form-group"><label>Contact Name</label><input v-model="form.contactName" /></div>
-                    <div class="form-group"><label>Contact Email</label><input v-model="form.contactEmail" type="email" /></div>
-                    <div class="form-group"><label>Phone</label><input v-model="form.contactPhone" /></div>
-                    <div class="form-group"><label>Ext</label><input v-model="form.ext" /></div>
-                    <div class="form-group"><label>Website</label><input v-model="form.webUrl" /></div>
+                    <div class="form-group">
+                        <label>Zip</label>
+                        <input v-model="form.zip" />
+                    </div>
 
+                    <!-- Region -->
+                    <div class="form-group">
+                        <label>Region *</label>
+                        <select v-model="form.regionCode" required>
+                            <option value="">-- Select Region --</option>
+                            <option v-for="r in regions" :key="r.code" :value="r.code">
+                                {{ r.name }}
+                            </option>
+                        </select>
+                    </div>
+
+                    <!-- Contact header -->
+                    <div class="form-group full-width">
+                        <h4 class="section-header">Contact Info</h4>
+                    </div>
+
+                    <!-- Contact fields -->
+                    <div class="form-group">
+                        <label>Contact Name</label>
+                        <input v-model="form.contactName" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Contact Email</label>
+                        <input v-model="form.contactEmail" type="email" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Phone</label>
+                        <input v-model="form.contactPhone" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Ext</label>
+                        <input v-model="form.ext" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Website</label>
+                        <input v-model="form.webUrl" />
+                    </div>
+
+                    <!-- Type / Active -->
                     <div class="form-group">
                         <label>Type</label>
                         <select v-model="form.type">
@@ -46,6 +114,12 @@
 
                     <div class="form-group checkbox-group">
                         <label><input type="checkbox" v-model="form.active" /> Active</label>
+                    </div>
+
+                    <!-- Description moved to end -->
+                    <div class="form-group full-width">
+                        <label>Description</label>
+                        <textarea v-model="form.description" rows="3" placeholder="Optional description…"></textarea>
                     </div>
                 </div>
 
@@ -60,52 +134,68 @@
 
 <script>import apiClient from "@/axios";
 
-    export default {
-        emits: ["created", "close"],
-        data() {
-            return {
-                isRemoteSite: false,
-                parentSites: [],
-                contractTypes: [],
-                form: {
-                    siteName: "",
-                    shortName: "",
-                    description: "",
-                    address: "",
-                    address2: "",
-                    city: "",
-                    state: "",
-                    zip: "",
-                    contactName: "",
-                    contactEmail: "",
-                    contactPhone: "",
-                    ext: "",
-                    webUrl: "",
-                    active: true,
-                    type: "",
-                    parentSiteId: null,
-                },
-            };
-        },
-        async mounted() {
-            const [parentsRes, typesRes] = await Promise.all([
-                apiClient.get("/TrainingCenter/parent-sites"),
-                apiClient.get("/TrainingCenter/contract-types"),
-            ]);
+export default {
+  emits: ["created", "close"],
+  data() {
+    return {
+      isRemoteSite: false,
+      parentSites: [],
+      contractTypes: [],
+      regions: [],           // NEW
+      form: {
+        siteName: "",
+        shortName: "",
+        description: "",
+        address: "",
+        address2: "",
+        city: "",
+        state: "",
+        zip: "",
+        contactName: "",
+        contactEmail: "",
+        contactPhone: "",
+        ext: "",
+        webUrl: "",
+        active: true,
+        type: "",
+        parentSiteId: null,
+        regionCode: ""       // NEW (binds to int on backend; OK as string -> int)
+      },
+    };
+  },
+  async mounted() {
+    const [parentsRes, typesRes, regionsRes] = await Promise.all([
+      apiClient.get("/TrainingCenter/parent-sites"),
+      apiClient.get("/TrainingCenter/contract-types"),
+      apiClient.get("/TrainingCenter/regions"), // NEW
+    ]);
 
-            this.parentSites = parentsRes.data?.$values ?? [];
-            this.contractTypes = typesRes.data?.$values ?? [];
-        },
-        methods: {
-            async submit() {
-                if (!this.isRemoteSite) this.form.parentSiteId = null;
-                await apiClient.post("/TrainingCenter/create", this.form);
-                alert("Training center created.");
-                this.$emit("created");
-                this.$emit("close");
-            },
-        },
-    };</script>
+    this.parentSites = parentsRes.data?.$values ?? parentsRes.data ?? [];
+    this.contractTypes = typesRes.data?.$values ?? typesRes.data ?? [];
+    this.regions = regionsRes.data?.$values ?? regionsRes.data ?? [];
+    this._esc = (e) => { if (e.key === 'Escape') this.$emit('close'); };
+    window.addEventListener('keydown', this._esc);
+  },
+  beforeUnmount() {
+    window.removeEventListener('keydown', this._esc);
+  },
+  methods: {
+    async submit() {
+      if (!this.isRemoteSite) this.form.parentSiteId = null;
+
+      // Ensure region is provided
+      if (!this.form.regionCode) {
+        alert("Please select a region.");
+        return;
+      }
+
+      await apiClient.post("/TrainingCenter/create", this.form);
+      alert("Training center created.");
+      this.$emit("created");
+      this.$emit("close");
+    },
+  },
+};</script>
 
 <style scoped>
     .modal-overlay {
@@ -273,5 +363,41 @@
         .btn-secondary {
             width: 100%;
         }
+    }
+    .modal {
+        position: relative;
+    }
+    /* allows absolute button positioning */
+
+    .icon-close {
+        border: none;
+        background: #f5f5f5;
+        border-radius: 8px;
+        padding: 6px 10px;
+        cursor: pointer;
+        line-height: 1;
+        font-size: 16px;
+    }
+
+        .icon-close.danger {
+            background: #ffe7e7;
+            color: #b71c1c;
+            border: 1px solid #ffc9c9;
+        }
+
+            .icon-close.danger:hover {
+                background: #ffd7d7;
+            }
+
+    .modal-close {
+        position: absolute;
+        top: 14px;
+        right: 14px;
+    }
+    .section-header {
+        margin: 4px 0 6px;
+        font-size: 16px;
+        font-weight: 700;
+        color: #333;
     }
 </style>

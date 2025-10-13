@@ -2,15 +2,49 @@
     <div class="system-page">
         <div class="header">
             <h2>🏢 Training Centers</h2>
-            <button class="btn-primary" @click="isModalOpen = true">➕ Create New</button>
+        </div>
+        <div class="cta-row">
+            <button class="btn-primary btn-cta" @click="isModalOpen = true">
+                ➕ Add New Center
+            </button>
         </div>
 
         <div class="filter-panel">
             <div class="filter-group">
-                <input v-model="filters.name" placeholder="Search by Name..." @input="applyFilters" />
-                <input v-model="filters.zip" placeholder="Search by ZIP Code..." @input="applyFilters" />
-                <button class="btn-search" @click="applyFilters">Search</button>
-                <button class="btn-secondary" @click="resetFilters">Reset</button>
+                <!-- Name (auto search on input) -->
+                <input v-model="filters.name"
+                       placeholder="Search by Name..."
+                       @input="applyFilters" />
+
+                <!-- Region multi-select dropdown with checkboxes -->
+                <div class="region-multiselect" @click.stop>
+                    <button class="region-trigger" @click="regionOpen = !regionOpen">
+                        <span v-if="!filters.regions.length">Filter by Region</span>
+                        <span v-else>{{ selectedRegionLabels.join(', ') }}</span>
+                        <svg viewBox="0 0 20 20" class="chev"><path d="M5 7l5 6 5-6" /></svg>
+                    </button>
+
+                    <div v-if="regionOpen" class="region-menu">
+                        <div class="region-search">
+                            <input v-model="regionQuery" placeholder="Search regions..." />
+                        </div>
+                        <div class="region-list">
+                            <label v-for="r in filteredRegions"
+                                   :key="r.code"
+                                   class="region-item">
+                                <input type="checkbox"
+                                       :value="r.code"
+                                       v-model="filters.regions"
+                                       @change="onRegionsChanged" />
+                                <span>{{ r.name }}</span>
+                            </label>
+                        </div>
+                        <div class="region-actions">
+                            <button type="button" class="link" @click="clearRegions">Clear</button>
+                            <button type="button" class="link" @click="regionOpen = false">Close</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -23,7 +57,6 @@
                 <thead>
                     <tr>
                         <th>Training Center Name</th>
-                        <th>Short Name / Description</th>
                         <th>Active</th>
                         <th>Actions</th>
                     </tr>
@@ -31,17 +64,8 @@
                 <tbody>
                     <tr v-for="center in centers" :key="center.siteSysId">
                         <td class="truncate-cell" :title="center.siteName">{{ center.siteName }}</td>
-                        <td class="truncate-cell">
-                            <strong>Short Name:</strong> {{ center.shortName || '—' }}<br />
-                            <strong>Description:</strong> {{ center.description || '—' }}
-                        </td>
                         <td>
-                            <label class="toggle-switch">
-                                <input type="checkbox"
-                                       :checked="center.active"
-                                       @change="toggleActive(center)" />
-                                <span class="slider"></span>
-                            </label>
+                            {{ center.active ? 'Yes' : 'No' }}
                         </td>
                         <td>
                             <button class="btn-action" @click="editCenter(center)">✏️ Edit</button>
@@ -57,6 +81,7 @@
         </div>
 
         <p v-else class="no-data">No training centers found.</p>
+
         <EditTrainingCenterModal v-if="editModalOpen"
                                  :center="editCenterData"
                                  @close="editModalOpen = false"
@@ -79,41 +104,76 @@
                 currentPage: 1,
                 pageSize: 10,
                 totalItems: 0,
+
+                // filters
                 filters: {
                     name: "",
-                    zip: ""
-                }
+                    regions: [] // array of region codes (numbers)
+                },
+
+                // regions dropdown
+                regions: [],
+                regionOpen: false,
+                regionQuery: "",
             };
         },
         computed: {
             totalPages() {
                 return Math.ceil(this.totalItems / this.pageSize);
+            },
+            filteredRegions() {
+                const q = this.regionQuery.trim().toLowerCase();
+                if (!q) return this.regions;
+                return this.regions.filter(r => r.name.toLowerCase().includes(q));
+            },
+            selectedRegionLabels() {
+                const map = new Map(this.regions.map(r => [r.code, r.name]));
+                return this.filters.regions.map(code => map.get(code)).filter(Boolean);
             }
         },
         mounted() {
-            this.fetchCenters();
+            document.addEventListener("click", this.closeRegionIfClickOutside);
+            this.bootstrap();
+        },
+        beforeUnmount() {
+            document.removeEventListener("click", this.closeRegionIfClickOutside);
         },
         methods: {
+            async bootstrap() {
+                const [regionsRes] = await Promise.all([
+                    apiClient.get("/TrainingCenter/regions"),
+                ]);
+                this.regions = regionsRes.data?.$values ?? regionsRes.data ?? [];
+                await this.fetchCenters();
+            },
             async fetchCenters() {
                 const params = {
                     page: this.currentPage,
-                    pageSize: this.pageSize
+                    pageSize: this.pageSize,
                 };
                 if (this.filters.name.trim()) params.name = this.filters.name.trim();
-                if (this.filters.zip.trim()) params.zip = this.filters.zip.trim();
+                if (this.filters.regions.length) {
+                    // send CSV of region codes: e.g. "1,3,7"
+                    params.regions = this.filters.regions.join(",");
+                }
 
                 const res = await apiClient.get("/TrainingCenter/paged", { params });
-                this.centers = res.data?.data?.$values ?? res.data.data;
+                this.centers = res.data?.data?.$values ?? res.data.data ?? [];
                 this.totalItems = res.data?.total ?? 0;
             },
             applyFilters() {
                 this.currentPage = 1;
                 this.fetchCenters();
             },
-            resetFilters() {
-                this.filters.name = "";
-                this.filters.zip = "";
+            onRegionsChanged() {
                 this.applyFilters();
+            },
+            clearRegions() {
+                this.filters.regions = [];
+                this.applyFilters();
+            },
+            closeRegionIfClickOutside() {
+                if (this.regionOpen) this.regionOpen = false;
             },
             async toggleActive(center) {
                 try {
@@ -138,9 +198,8 @@
         }
     };</script>
 
-
 <style scoped>
-    .system-page {
+    system-page {
         padding: 20px 40px;
         font-family: 'Segoe UI', sans-serif;
         color: #333;
@@ -148,9 +207,9 @@
 
     .header {
         display: flex;
-        justify-content: space-between;
+        justify-content: center; 
         align-items: center;
-        margin-bottom: 24px;
+        margin-bottom: 16px;
     }
 
         .header h2 {
@@ -362,4 +421,144 @@
         input:checked + .slider:before {
             transform: translateX(24px);
         }
+    /* Region multi-select */
+    .region-multiselect {
+        position: relative;
+    }
+
+    .region-trigger {
+        width: 100%;
+        text-align: left;
+        padding: 10px 14px;
+        border: 1px solid #ccc;
+        border-radius: 12px;
+        background: #fff;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        justify-content: space-between;
+        cursor: pointer;
+    }
+
+        .region-trigger .chev {
+            width: 16px;
+            height: 16px;
+            fill: none;
+            stroke: #666;
+            stroke-width: 2;
+        }
+
+    .region-menu {
+        position: absolute;
+        z-index: 5;
+        margin-top: 6px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        width: 100%;
+        max-height: 280px;
+        overflow: hidden;
+        box-shadow: 0 10px 30px rgba(0,0,0,.08);
+    }
+
+    .region-search {
+        padding: 8px;
+        border-bottom: 1px solid #eee;
+    }
+
+        .region-search input {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+
+    .region-list {
+        max-height: 210px;
+        overflow-y: auto;
+        padding: 6px 8px;
+    }
+
+    .region-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 4px;
+        cursor: pointer;
+        border-radius: 6px;
+    }
+
+        .region-item:hover {
+            background: #f8fafc;
+        }
+
+    .region-actions {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 10px;
+        border-top: 1px solid #eee;
+        background: #fafafa;
+    }
+
+        .region-actions .link {
+            background: none;
+            border: none;
+            color: #2563eb;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 6px;
+        }
+
+            .region-actions .link:hover {
+                background: #eef2ff;
+            }
+    .header {
+        display: flex;
+        justify-content: center; /* center the heading */
+        align-items: center;
+        margin-bottom: 12px;
+    }
+
+        .header h2 {
+            font-size: 28px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+    /* Centered CTA row under the title */
+    .cta-row {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 18px;
+    }
+
+    /* Base button */
+    .btn-primary {
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        padding: 12px 22px;
+        font-size: 16px;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: background-color 0.25s ease, transform 0.05s ease;
+    }
+
+        .btn-primary:hover {
+            background-color: #388e3c;
+        }
+
+        .btn-primary:active {
+            transform: translateY(1px);
+        }
+
+    /* Bigger CTA look */
+    .btn-cta {
+        padding: 14px 28px;
+        font-size: 18px;
+        border-radius: 12px;
+    }
 </style>
+

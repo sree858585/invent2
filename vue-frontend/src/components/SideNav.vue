@@ -123,7 +123,7 @@
                     <li v-if="isUserLoggedIn && isAdminOrManager">
                         <router-link to="/role-management" class="nav-item-link">
                             <span class="icon">🛡️</span>
-                            <span v-show="isExpanded">Role Management</span>
+                            <span v-show="isExpanded">User Management</span>
                         </router-link>
                     </li>
 
