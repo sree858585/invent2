@@ -16,6 +16,18 @@ public class TrainingCenterController : ControllerBase
         _context = context;
     }
 
+    [HttpGet("regions")]
+    public async Task<IActionResult> GetRegions()
+    {
+        var regions = await _context.LkRegionCnties
+            .OrderBy(r => r.SortKey ?? int.MaxValue)
+            .ThenBy(r => r.Value)
+            .Select(r => new { code = r.Code, name = r.Value })
+            .ToListAsync();
+
+        return Ok(regions);
+    }
+
     [HttpGet("all")]
     public async Task<IActionResult> GetAll()
     {
@@ -38,6 +50,7 @@ public class TrainingCenterController : ControllerBase
                 s.Type,
                 s.Description,
                 s.ParentSiteId,
+                s.RegionCode,
                 ParentSiteName = _context.Sites
                     .Where(p => p.SiteSysId == s.ParentSiteId)
                     .Select(p => p.SiteName)
@@ -64,15 +77,27 @@ public class TrainingCenterController : ControllerBase
     [FromQuery] int page = 1,
     [FromQuery] int pageSize = 10,
     [FromQuery] string? name = null,
-    [FromQuery] string? zip = null)
+    [FromQuery] string? regions = null // CSV: "1,3,7"
+)
     {
         var query = _context.Sites.AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(name))
-            query = query.Where(s => s.SiteName.Contains(name));
+            query = query.Where(s => s.SiteName != null && s.SiteName.Contains(name));
 
-        if (!string.IsNullOrWhiteSpace(zip))
-            query = query.Where(s => s.Zip.Contains(zip));
+        // regions CSV -> List<int>
+        if (!string.IsNullOrWhiteSpace(regions))
+        {
+            var codes = regions
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(s => int.TryParse(s, out var n) ? n : (int?)null)
+                .Where(n => n.HasValue)
+                .Select(n => n!.Value)
+                .ToList();
+
+            if (codes.Count > 0)
+                query = query.Where(s => s.RegionCode.HasValue && codes.Contains(s.RegionCode.Value));
+        }
 
         var total = await query.CountAsync();
 
@@ -87,7 +112,8 @@ public class TrainingCenterController : ControllerBase
                 s.ShortName,
                 s.Description,
                 s.Zip,
-                s.Active
+                s.Active,
+                s.RegionCode
             })
             .ToListAsync();
 
@@ -131,6 +157,8 @@ public class TrainingCenterController : ControllerBase
         site.Type = updated.Type;
         site.ParentSiteId = updated.ParentSiteId;
         site.Active = updated.Active;
+
+        site.RegionCode = updated.RegionCode;
 
         await _context.SaveChangesAsync();
         return Ok(new { message = "Training Center updated successfully." });
