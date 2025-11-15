@@ -41,4 +41,5 @@ public partial class Subject
     public string? A3rdPartyCrseId { get; set; }
 
     public bool IsPeerCore { get; set; }
+    public bool IsOnlineTraining { get; set; }
 }

@@ -40,4 +40,6 @@ public partial class Site
     public int Type { get; set; }
 
     public string? Description { get; set; }
+
+    public int? RegionCode { get; set; }
 }
