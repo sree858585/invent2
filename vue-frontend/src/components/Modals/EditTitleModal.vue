@@ -1,16 +1,26 @@
 ﻿<template>
     <div class="modal-overlay">
-        <div class="modal">
-            <h2>Edit Training Title</h2>
-            <form @submit.prevent="updateTitle">
+        <div class="modal fade-in">
+            <!-- ✖ Close Button -->
+            <button class="close-btn" @click="$emit('close')" aria-label="Close">&times;</button>
+
+            <!-- Header -->
+            <div class="modal-header">
+                <h2>Edit Training Title</h2>
+            </div>
+
+            <form @submit.prevent="updateTitle" class="modal-body">
                 <div class="form-group">
-                    <label>Course Title *</label>
-                    <input v-model="form.courseTitle" required />
+                    <label>Course Title <span class="required">*</span></label>
+                    <input v-model="form.courseTitle" placeholder="Enter course title" required />
                 </div>
 
                 <div class="form-group">
                     <label>Description</label>
-                    <quill-editor v-model:content="form.description" contentType="html" theme="snow" class="quill-box" />
+                    <quill-editor v-model:content="form.description"
+                                  contentType="html"
+                                  theme="snow"
+                                  class="quill-box" />
                 </div>
 
                 <div class="form-group">
@@ -24,36 +34,42 @@
                 </div>
 
                 <div class="checkbox-row">
-                    <label><input type="checkbox" v-model="form.active" /> Active</label>
-                    <label><input type="checkbox" v-model="form.ai" /> AIDS Institute</label>
                     <label><input type="checkbox" v-model="form.cnecredits" /> CNE hours</label>
                     <label><input type="checkbox" v-model="form.oasascredits" /> OASAS hours</label>
                 </div>
 
-                <div class="row-group">
-                    <div class="form-group small">
-                        <label>Base Hours</label>
-                        <input v-model="form.creditHrs" type="text" />
-                    </div>
-                    <div class="form-group small">
-                        <label>3rd Party Course ID</label>
-                        <input v-model="form.a3rdPartyCrseId" type="text" />
-                    </div>
-                </div>
-
                 <div class="form-group">
                     <label>Certificate Description</label>
-                    <quill-editor v-model:content="form.certDescription" contentType="html" theme="snow" class="quill-box" />
+                    <quill-editor v-model:content="form.certDescription"
+                                  contentType="html"
+                                  theme="snow"
+                                  class="quill-box" />
                 </div>
 
                 <div class="form-group">
                     <label>Certificate Notes</label>
-                    <textarea v-model="form.miscCertDesc"></textarea>
+                    <textarea v-model="form.miscCertDesc"
+                              placeholder="Enter notes or remarks"></textarea>
                 </div>
 
                 <div class="form-group">
-                    <label>WebCast or Online Training URL</label>
-                    <input v-model="form.videoUrl" type="text" />
+                    <label>Is it an Online Training?</label>
+                    <div class="radio-row">
+                        <label><input type="radio" value="true" v-model="form.isOnlineTraining" /> Yes</label>
+                        <label><input type="radio" value="false" v-model="form.isOnlineTraining" /> No</label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>
+                        WebCast or Online Training URL
+                        <span v-if="form.isOnlineTraining === 'true'" class="required">*</span>
+                    </label>
+                    <input v-model="form.videoUrl"
+                           type="text"
+                           :required="form.isOnlineTraining === 'true'"
+                           :class="{ 'required-border': form.isOnlineTraining === 'true' && !form.videoUrl }"
+                           placeholder="Enter the webcast or training URL" />
                 </div>
 
                 <div class="button-group">
@@ -66,167 +82,262 @@
 </template>
 
 <script>import apiClient from '@/axios';
-import { QuillEditor } from '@vueup/vue-quill';
+    import { QuillEditor } from '@vueup/vue-quill';
 
-export default {
-    components: { QuillEditor },
-    props: ['title'],
-    emits: ['close', 'updated'],
-    data() {
-        return {
-            form: {
-                subjectSysId: null,
-                courseTitle: '',
-                description: '',
-                category: '',
-                active: true,
-                ai: false,
-                cnecredits: false,
-                oasascredits: false,
-                creditHrs: '',
-                a3rdPartyCrseId: '',
-                certDescription: '',
-                miscCertDesc: '',
-                videoUrl: '',
-                is3rdParty: false
-            },
-            categories: []
-        };
-    },
-    async mounted() {
-        const res = await apiClient.get('/Lookup/categories');
-        this.categories = res.data?.$values || [];
+    export default {
+        components: { QuillEditor },
+        props: ['title'],
+        emits: ['close', 'updated'],
+        data() {
+            return {
+                form: {
+                    subjectSysId: null,
+                    courseTitle: '',
+                    description: '',
+                    category: '',
+                    cnecredits: false,
+                    oasascredits: false,
+                    certDescription: '',
+                    miscCertDesc: '',
+                    videoUrl: '',
+                    isOnlineTraining: 'false'
+                },
+                categories: []
+            };
+        },
+        async mounted() {
+            const res = await apiClient.get('/Lookup/categories');
+            this.categories = res.data?.$values || [];
 
-        const t = await apiClient.get(`/TrainingTitle/${this.title.subjectSysId}`);
-        const data = t.data;
+            const t = await apiClient.get(`/TrainingTitle/${this.title.subjectSysId}`);
+            const data = t.data;
 
-        this.form = {
-            subjectSysId: data.subjectSysId,
-            courseTitle: data.courseTitle ?? '',
-            description: data.description ?? '',
-            category: data.category ?? '',
-            active: data.active ?? false,
-            ai: data.ai ?? false,
-            cnecredits: data.cnecredits ?? false,
-            oasascredits: data.oasascredits ?? false,
-            creditHrs: data.creditHrs ?? '',
-            a3rdPartyCrseId: data.a3rdPartyCrseId ?? '',
-            certDescription: data.certDescription ?? '',
-            miscCertDesc: data.miscCertDesc ?? '',
-            videoUrl: data.videoUrl ?? '',
-            is3rdParty: data.is3rdParty ?? false
-        };
-    },
-    methods: {
-        async updateTitle() {
-            try {
-                await apiClient.put(`/TrainingTitle/update/${this.form.subjectSysId}`, this.form);
-                alert('Training title updated successfully!');
-                this.$emit('updated');
-                this.$emit('close');
-            } catch (err) {
-                console.error('Error updating title', err);
-                alert('Failed to update training title.');
+            this.form = {
+                subjectSysId: data.subjectSysId,
+                courseTitle: data.courseTitle ?? '',
+                description: data.description ?? '',
+                category: data.category ?? '',
+                cnecredits: data.cnecredits ?? false,
+                oasascredits: data.oasascredits ?? false,
+                certDescription: data.certDescription ?? '',
+                miscCertDesc: data.miscCertDesc ?? '',
+                videoUrl: data.videoUrl ?? '',
+                isOnlineTraining: data.isOnlineTraining ? 'true' : 'false'
+            };
+        },
+        methods: {
+            async updateTitle() {
+                try {
+                    if (this.form.isOnlineTraining === 'true' && !this.form.videoUrl.trim()) {
+                        alert('Please provide a WebCast or Online Training URL.');
+                        return;
+                    }
+
+                    const payload = {
+                        ...this.form,
+                        isOnlineTraining: this.form.isOnlineTraining === 'true'
+                    };
+
+                    await apiClient.put(`/TrainingTitle/update/${this.form.subjectSysId}`, payload);
+                    alert('Training title updated successfully!');
+                    this.$emit('updated');
+                    this.$emit('close');
+                } catch (err) {
+                    console.error('Error updating title', err);
+                    alert('Failed to update training title.');
+                }
             }
         }
-    }
-};</script>
-
+    };</script>
 
 <style scoped>
-    /* styling same as CreateTitleModal.vue */
+    /* Overlay */
     .modal-overlay {
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.6);
+        background: rgba(0, 0, 0, 0.55);
         display: flex;
         justify-content: center;
         align-items: center;
-        z-index: 999;
+        z-index: 1000;
     }
 
+    /* Modal */
     .modal {
-        background-color: white;
-        padding: 32px;
+        position: relative;
+        background-color: #fff;
         border-radius: 12px;
-        width: 700px;
+        width: 720px;
         max-height: 90vh;
         overflow-y: auto;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+        font-family: "Segoe UI", Roboto, sans-serif;
+        animation: fadeIn 0.25s ease-out;
     }
 
-        .modal h2 {
-            margin-bottom: 20px;
-            font-size: 24px;
-            font-weight: 600;
-            text-align: center;
-            color: #333;
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: scale(0.97);
         }
 
+        to {
+            opacity: 1;
+            transform: scale(1);
+        }
+    }
+
+    /* Header (NYSDOH Purple) */
+    .modal-header {
+        background: #3D2B69;
+        color: #fff;
+        padding: 16px 24px;
+        border-top-left-radius: 12px;
+        border-top-right-radius: 12px;
+        text-align: center;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+    }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 22px;
+            font-weight: 600;
+        }
+
+    /* Body */
+    .modal-body {
+        padding: 24px 28px;
+    }
+
+    /* Fields */
     .form-group {
-        margin-bottom: 16px;
+        margin-bottom: 18px;
     }
 
         .form-group label {
-            display: block;
             font-weight: 600;
+            display: block;
             margin-bottom: 6px;
+            color: #333;
         }
 
     input,
     select,
     textarea {
         width: 100%;
-        padding: 10px;
-        border-radius: 6px;
+        padding: 10px 12px;
         border: 1px solid #ccc;
-        font-size: 14px;
+        border-radius: 6px;
+        font-size: 15px;
+        transition: border-color 0.2s ease;
     }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            border-color: #3D2B69;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(61, 43, 105, 0.2);
+        }
 
     textarea {
         resize: vertical;
-        min-height: 80px;
+        min-height: 90px;
     }
 
-    .checkbox-row {
+    .quill-box {
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        min-height: 130px;
+    }
+
+    /* Checkboxes & Radio */
+    .checkbox-row,
+    .radio-row {
         display: flex;
+        gap: 20px;
         flex-wrap: wrap;
-        gap: 16px;
-        margin-bottom: 16px;
     }
 
-    .row-group {
-        display: flex;
-        gap: 16px;
-        margin-bottom: 16px;
-    }
-
-        .row-group .form-group.small {
-            flex: 1;
+        .radio-row label,
+        .checkbox-row label {
+            font-weight: 500;
+            cursor: pointer;
         }
 
+    /* Buttons */
     .button-group {
         display: flex;
         justify-content: flex-end;
-        gap: 12px;
-        margin-top: 24px;
+        gap: 14px;
+        margin-top: 28px;
     }
 
     .btn-primary {
-        background-color: #4caf50;
-        color: white;
-        padding: 10px 20px;
+        background: #3D2B69;
+        color: #fff;
         border: none;
+        padding: 10px 22px;
+        font-size: 15px;
         border-radius: 6px;
         cursor: pointer;
+        font-weight: 600;
+        transition: background 0.2s ease;
     }
 
+        .btn-primary:hover {
+            background: #2f2052;
+        }
+
     .btn-secondary {
-        background-color: #e0e0e0;
+        background: #e0e0e0;
         color: #333;
-        padding: 10px 20px;
         border: none;
+        padding: 10px 22px;
+        font-size: 15px;
         border-radius: 6px;
         cursor: pointer;
+        transition: background 0.2s ease;
+    }
+
+        .btn-secondary:hover {
+            background: #d5d5d5;
+        }
+
+    /* Close Button */
+    .close-btn {
+        position: absolute;
+        top: 10px;
+        right: 12px;
+        background: rgba(255, 255, 255, 0.8);
+        color: #333;
+        border: none;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        font-size: 20px;
+        font-weight: bold;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    }
+
+        .close-btn:hover {
+            background: #ffebee;
+            color: #c62828;
+            transform: scale(1.05);
+        }
+
+    /* Utility */
+    .required {
+        color: red;
+    }
+
+    .required-border {
+        border-color: red !important;
     }
 </style>

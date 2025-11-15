@@ -113,9 +113,9 @@
 
     /* Main content area */
     .content {
-        flex: 1; /* This will take the remaining space */
-        padding: 20px;
-        overflow-y: auto; /* Enable scrolling if contents are large */
+        flex: 1;
+        padding: 0 20px 20px; /* ⬅️ was 20px; remove the top padding */
+        overflow-y: auto;
     }
 
     /* Footer should be at the bottom and span full width */
