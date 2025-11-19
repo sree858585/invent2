@@ -93,6 +93,9 @@ namespace HIVTraining_Vue.Server.Controllers
             existing.CertDescription = updated.CertDescription;
             existing.MiscCertDesc = updated.MiscCertDesc;
             existing.VideoUrl = updated.VideoUrl;
+            existing.IsOnlineTraining = updated.IsOnlineTraining;
+
+            existing.MarkAsNewUntil = updated.MarkAsNewUntil;
 
             await _context.SaveChangesAsync();
 

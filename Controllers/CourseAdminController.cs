@@ -222,10 +222,11 @@ namespace HIVTraining_Vue.Server.Controllers
                 .OrderBy(s => s.SessionDate)
                 .Select(s => new
                 {
-                    sessionDate = s.SessionDate,     // string/ISO is fine; frontend does split("T")[0]
-                    startTime = s.StartTime,       // frontend uses substring(0,5)
+                    sessionDate = s.SessionDate,
+                    startTime = s.StartTime,
                     endTime = s.EndTime,
-                    sessionUrl = s.SessionUrl
+                    sessionUrl = s.SessionUrl,
+                    trainingLocation = s.TrainingLocation  
                 })
                 .ToListAsync();
 
@@ -245,6 +246,7 @@ namespace HIVTraining_Vue.Server.Controllers
                 c.RegDeadLine,
                 c.MaxSeats,
                 c.TrainingLocation,
+                c.VirtualUrl,          
                 c.Deliverable,
                 c.Format,
                 c.Rtc,
@@ -252,8 +254,8 @@ namespace HIVTraining_Vue.Server.Controllers
                 c.OtherFund,
                 c.Hidden,
                 c.Information,
-                isMultiSession = c.IsMultiSession,  // your Vue reads c.isMultiSession
-                sessions                        // your Vue handles .sessions or .sessions.$values
+                isMultiSession = c.IsMultiSession,
+                sessions
             });
         }
         [HttpPut("update/{id}")]
@@ -280,6 +282,7 @@ namespace HIVTraining_Vue.Server.Controllers
             existingCourse.RegDeadLine = updated.RegDeadLine;
             existingCourse.MaxSeats = updated.MaxSeats;
             existingCourse.TrainingLocation = updated.TrainingLocation;
+            existingCourse.VirtualUrl = updated.VirtualUrl;   // <-- ADD THIS
             existingCourse.Deliverable = updated.Deliverable;
             existingCourse.Format = updated.Format;
             existingCourse.Rtc = updated.Rtc;
@@ -306,7 +309,8 @@ namespace HIVTraining_Vue.Server.Controllers
                     SessionDate = s.SessionDate,
                     StartTime = TimeSpan.Parse(s.StartTime),
                     EndTime = TimeSpan.Parse(s.EndTime),
-                    SessionUrl = s.SessionUrl
+                    SessionUrl = s.SessionUrl,
+                    TrainingLocation = string.IsNullOrWhiteSpace(s.TrainingLocation) ? "" : s.TrainingLocation
                 }).ToList();
 
                 _context.CourseSessions.AddRange(newSessions);

@@ -109,7 +109,8 @@ namespace HIVTraining_Vue.Server.Controllers
                     SessionDate = s.SessionDate,
                     StartTime = TimeSpan.Parse(s.StartTime),
                     EndTime = TimeSpan.Parse(s.EndTime),
-                    SessionUrl = s.SessionUrl
+                    SessionUrl = s.SessionUrl,
+                    TrainingLocation = s.TrainingLocation
                 }).ToList();
 
                 _context.CourseSessions.AddRange(sessions);
