@@ -15,6 +15,8 @@ import CourseListManager from "@/components/CourseListManager.vue";
 import MarkAttendance from "@/components/MarkAttendance.vue";
 import ViewAttendance from "@/components/ViewAttendance.vue";
 import RoleManagement from '@/components/RoleManagement.vue';
+import TrainingCalendar from "@/components/TrainingCalendar.vue";
+
 
 
 
@@ -110,7 +112,12 @@ const routes = [
         path: '/role-management',
         name: 'RoleManagement',
         component: RoleManagement
-    }, 
+    },
+    {
+        path: "/training-calendar",
+        name: "TrainingCalendar",
+        component: TrainingCalendar
+    },
     {
         path: "/",
         redirect: "/home" // ✅ Redirect to home by default

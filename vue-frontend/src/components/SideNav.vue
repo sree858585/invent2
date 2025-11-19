@@ -90,6 +90,12 @@
                             <span v-show="isExpanded">Course Module</span>
                         </router-link>
                     </li>
+                    <li>
+                        <router-link to="/training-calendar">
+                            <span class="icon">📅</span>
+                            <span v-show="isExpanded">Training Calendar</span>
+                        </router-link>
+                    </li>
 
                     <!-- ✅ SYSTEM MANAGEMENT: Only for Admin/Manager -->
                     <li v-if="isUserLoggedIn && isAdminOrManager">
