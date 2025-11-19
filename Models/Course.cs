@@ -85,5 +85,6 @@ public partial class Course
     public Subject? Subject { get; set; }
 
     public virtual ICollection<CourseSession> Sessions { get; set; } = new List<CourseSession>();
+    public string? VirtualUrl { get; set; }
 
 }

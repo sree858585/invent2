@@ -42,4 +42,5 @@ public partial class Subject
 
     public bool IsPeerCore { get; set; }
     public bool IsOnlineTraining { get; set; }
+    public DateTime? MarkAsNewUntil { get; set; }
 }

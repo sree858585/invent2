@@ -15,6 +15,7 @@ namespace HIVTraining_Vue.Server.Models
 
         [ForeignKey("CourseSysId")]
         public Course Course { get; set; }
+        public string TrainingLocation { get; set; }
     }
 }
 
