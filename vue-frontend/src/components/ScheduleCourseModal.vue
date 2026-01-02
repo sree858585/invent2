@@ -148,6 +148,11 @@
                                     <label>End Time <span class="required">*</span></label>
                                     <input type="time" v-model="form.endTime" required />
                                 </div>
+
+                                <div class="form-group">
+                                    <label>Training Hours</label>
+                                    <input type="number" :value="calculatedBaseHours" readonly />
+                                </div>
                             </div>
 
                             <div class="form-group">
@@ -325,6 +330,10 @@
                             <input type="checkbox" id="hideCourse" v-model="form.hideCourse" />
                             <label for="hideCourse">Hide course from public listing</label>
                         </div>
+                        <div class="form-group">
+                            <label>Mark as New Until (Optional)</label>
+                            <input type="date" v-model="form.markAsNewUntil" />
+                        </div>
 
                         <div class="form-group">
                             <label>Additional Notes</label>
@@ -377,6 +386,7 @@
                     courseSchedule: "",
                     virtualUrl: "",
                     isMultiSession: false,
+                    markAsNewUntil: "",
                     sessions: []
                 },
                 lookupData: {
@@ -393,6 +403,34 @@
         computed: {
             filteredFormats() {
                 return this.lookupData.formats.filter((f) => f.code !== 2);
+            },
+            calculatedBaseHours() {
+                // MULTI SESSION MODE
+                if (this.form.isMultiSession && this.form.sessions.length > 0) {
+                    let total = 0;
+
+                    this.form.sessions.forEach(s => {
+                        if (s.date && s.startTime && s.endTime) {
+                            const start = new Date(`${s.date}T${s.startTime}:00`);
+                            const end = new Date(`${s.date}T${s.endTime}:00`);
+                            const diff = (end - start) / (1000 * 60 * 60);
+                            if (diff > 0) total += diff;
+                        }
+                    });
+
+                    return total.toFixed(2);
+                }
+
+                // SINGLE-DAY MODE
+                if (!this.form.startTime || !this.form.endTime) return "";
+
+                const start = new Date(`2000-01-01T${this.form.startTime}`);
+                const end = new Date(`2000-01-01T${this.form.endTime}`);
+
+                let diff = (end - start) / (1000 * 60 * 60);
+                if (diff < 0) diff = 0;
+
+                return diff.toFixed(2);
             }
         },
         watch: {
@@ -525,9 +563,13 @@
                         Coe: this.form.fundingType === "COE",
                         OtherFund: this.form.fundingType === "Others",
                         Hidden: this.form.hideCourse,
+                        BaseHours: Number(this.calculatedBaseHours),
                         IsMultiSession: this.form.isMultiSession,
                         Delivered: false,
-                        Cancelled: false
+                        Cancelled: false,
+                        MarkAsNewUntil: this.form.markAsNewUntil
+                            ? new Date(this.form.markAsNewUntil).toISOString()
+                            : null
                     };
 
                     const requestPayload = {

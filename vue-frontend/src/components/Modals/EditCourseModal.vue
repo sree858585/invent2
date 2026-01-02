@@ -105,6 +105,10 @@
                                 <label>End Date *</label>
                                 <input type="date" v-model="form.endDate" required />
                             </div>
+                            <div class="form-group">
+                                <label>Mark as New Until</label>
+                                <input type="date" v-model="form.markAsNewUntil" />
+                            </div>
                         </div>
 
                         <div class="form-column">
@@ -117,6 +121,10 @@
                                 <div class="inline-field">
                                     <label>End Time *</label>
                                     <input type="time" v-model="form.endTime" required />
+                                </div>
+                                <div class="form-group">
+                                    <label>Training Hours</label>
+                                    <input type="number" v-model="form.baseHours" readonly />
                                 </div>
                             </div>
 
@@ -286,6 +294,8 @@
                     fundingType: '',
                     hideCourse: false,
                     courseSchedule: '',
+                    markAsNewUntil: '', 
+                    baseHours: '',
                     isMultiSession: false,
                     sessions: [
                         {
@@ -308,6 +318,59 @@
                 },
                 filteredSubjects: []
             };
+        },
+        computed: {
+            // same logic as Schedule modal
+            calculatedBaseHours() {
+                // MULTI-SESSION: sum each session
+                if (this.form.isMultiSession && this.form.sessions.length > 0) {
+                    let total = 0;
+                    this.form.sessions.forEach((s) => {
+                        if (s.date && s.startTime && s.endTime) {
+                            const start = new Date(`${s.date}T${s.startTime}:00`);
+                            const end = new Date(`${s.date}T${s.endTime}:00`);
+                            const diff = (end - start) / (1000 * 60 * 60);
+                            if (diff > 0) total += diff;
+                        }
+                    });
+                    return Number.isNaN(total) ? 0 : Number(total.toFixed(2));
+                }
+
+                // SINGLE-BLOCK MODE: just time diff
+                if (!this.form.startTime || !this.form.endTime) return 0;
+
+                const start = new Date(`2000-01-01T${this.form.startTime}:00`);
+                const end = new Date(`2000-01-01T${this.form.endTime}:00`);
+                let diff = (end - start) / (1000 * 60 * 60);
+                if (diff < 0) diff = 0;
+                return Number(diff.toFixed(2));
+            }
+        },
+        watch: {
+            'form.category'(newCategory) {
+                if (newCategory) {
+                    this.fetchSubjectsByCategory(newCategory);
+                } else {
+                    this.filteredSubjects = [];
+                }
+            },
+            'form.isMultiSession'(val) {
+                if (val && this.form.sessions.length === 0) {
+                    this.addSession();
+                }
+                if (!val) {
+                    // when disabling multi-session, keep at least one empty session
+                    this.form.sessions = [
+                        {
+                            date: '',
+                            startTime: '',
+                            endTime: '',
+                            url: '',
+                            trainingLocation: ''
+                        }
+                    ];
+                }
+            }
         },
         async mounted() {
             await this.fetchLookupData();
@@ -338,6 +401,39 @@
                 if (this.form.sessions.length > 1) {
                     this.form.sessions.splice(index, 1);
                 }
+            },
+            calculateBaseHours() {
+                if (!this.form.startDate || !this.form.endDate || !this.form.startTime || !this.form.endTime)
+                    return;
+
+                const start = new Date(`${this.form.startDate}T${this.form.startTime}:00`);
+                const end = new Date(`${this.form.endDate}T${this.form.endTime}:00`);
+
+                let diffMs = end - start;
+
+                if (diffMs <= 0) {
+                    this.form.baseHours = 0;
+                    return;
+                }
+
+                const hours = diffMs / (1000 * 60 * 60);
+                this.form.baseHours = parseFloat(hours.toFixed(2));
+            },
+            calculateSessionHours() {
+                if (!this.form.isMultiSession) return this.form.baseHours;
+
+                let total = 0;
+
+                this.form.sessions.forEach(s => {
+                    if (s.date && s.startTime && s.endTime) {
+                        const start = new Date(`${s.date}T${s.startTime}:00`);
+                        const end = new Date(`${s.date}T${s.endTime}:00`);
+                        const diff = (end - start) / (1000 * 60 * 60);
+                        if (diff > 0) total += diff;
+                    }
+                });
+
+                this.form.baseHours = parseFloat(total.toFixed(2));
             },
             async fetchSubjectsByCategory(categoryCode) {
                 try {
@@ -394,6 +490,13 @@
                 this.form.hideCourse = c.hidden;
                 this.form.courseSchedule = c.information;
                 this.form.isMultiSession = c.isMultiSession || false;
+                this.form.baseHours = c.baseHours || c.BaseHours || 0;
+                this.form.markAsNewUntil =
+                    c.markAsNewUntil?.split('T')[0] ||
+                    c.markNewUntil?.split('T')[0] ||
+                    c.newUntil?.split('T')[0] ||
+                    c.MarkAsNewUntil?.split('T')[0] ||
+                    '';
 
                 const rawSessions = c.sessions?.$values || [];
 
@@ -450,6 +553,10 @@
                             ? new Date(this.form.regDeadline).toISOString()
                             : null,
 
+                        markAsNewUntil: this.form.markAsNewUntil
+                            ? new Date(this.form.markAsNewUntil).toISOString()
+                            : null,
+
                         maxSeats: n(this.form.maxSeats),
                         trainingLocation: this.form.trainingLocation || null,
                         virtualUrl: this.form.virtualUrl || null,
@@ -463,6 +570,7 @@
 
                         information: this.form.courseSchedule || null,
                         isMultiSession: !!this.form.isMultiSession,
+                        baseHours: this.calculatedBaseHours,
                         dateModified: new Date().toISOString()
                     };
 
@@ -494,15 +602,7 @@
                 }
             }
         },
-        watch: {
-            'form.category'(newCategory) {
-                if (newCategory) {
-                    this.fetchSubjectsByCategory(newCategory);
-                } else {
-                    this.filteredSubjects = [];
-                }
-            }
-        }
+        
     };</script>
 
 <style scoped>

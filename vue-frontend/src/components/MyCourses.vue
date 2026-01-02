@@ -29,8 +29,13 @@
                      tabindex="0"
                      @click="openCourseDetail(course.courseSysId)">
 
-                    <div class="course-image" :style="getImageStyle()" />
+                    <div class="course-media">
+                        <div v-if="course.formatLabel" class="format-badge-outside">
+                            {{ course.formatLabel }}
+                        </div>
 
+                        <div class="course-image" :style="getImageStyle()"></div>
+                    </div>
                     <div class="course-details">
                         <h3 class="course-title">{{ truncateText(course.subjectTitle, 70) }}</h3>
                         <p class="course-date"><strong>Date:</strong> {{ formatDate(course.courseDate) }}</p>
@@ -57,10 +62,18 @@
                             {{ course.status === 2 ? "Cancelled" : "Absent" }}
                         </div>
 
-                        <button v-if="course.status === 1"
+                        <!-- ONLINE TRAINING (SCORM) -->
+                        <button v-if="course.status === 1 && course.format === 2"
                                 class="launch-btn"
-                                @click.stop="launchCourse(course.courseSysId)">
-                            Launch Course
+                                @click.stop="launchCourse(course.courseSysId, course.scormButtonLabel)">
+                            {{ course.scormButtonLabel || "Launch Course" }}
+                        </button>
+
+                        <!-- OTHER FORMATS (NON-SCORM) -->
+                        <button v-if="course.status === 1 && course.format !== 2"
+                                class="details-btn"
+                                @click.stop="openDetails(course)">
+                            View Details
                         </button>
 
                         <button v-if="course.status === 1"
@@ -88,18 +101,23 @@
                          @close="selectedUserCourse = null"
                          @launch-course="launchCourse"
                          @drop-course="openDropConfirm" />
+    <CourseDetailsModal v-if="showDetailsModal"
+                        :course="detailsCourse"
+                        @close="closeDetails" />
 </template>
 
 <script>import apiClient from "@/axios";
     import DropCourseConfirmModal from "@/components/Modals/DropCourseConfirmModal.vue";
     import UserCourseViewModal from "@/components/Modals/UserCourseViewModal.vue";
     import ScormPlayer from "@/components/ScormPlayer.vue";
+    import CourseDetailsModal from "@/components/Modals/CourseViewModal.vue";
 
     export default {
         components: {
             DropCourseConfirmModal,
             UserCourseViewModal,
-            ScormPlayer
+            ScormPlayer,
+            CourseDetailsModal
         },
         name: "MyLearningsPage",
         data() {
@@ -111,6 +129,8 @@
                 selectedCourseId: null,
                 selectedUserCourse: null,
                 closeUserCourseModalAfterDrop: false,
+                showDetailsModal: false,
+                detailsCourse: null,
 
                 // SCORM player state
                 isPlaying: false,
@@ -119,51 +139,109 @@
         },
         computed: {
             filteredCourses() {
-                if (this.activeTab === "inProgress") {
-                    return this.allCourses
-                        .filter(c => c.status === 1)
-                        .map(c => {
-                            return {
-                                ...JSON.parse(JSON.stringify(c)),
-                                progress: Math.floor(Math.random() * 50 + 40),
-                            };
-                        });
-                } else {
-                    return this.allCourses.filter(c => [2, 3, 4].includes(c.status));
-                }
-            }
+    if (this.activeTab === "inProgress") {
+      return this.allCourses
+        .filter(c => c.status === 1)
+        .map(c => ({
+          ...JSON.parse(JSON.stringify(c)),
+          progress: c.scormProgress ?? 0, // ✅ from API
+          scormButtonLabel: c.scormButtonLabel ?? "Launch Course",
+          scormCompleted: !!c.scormCompleted
+        }));
+    } else {
+      return this.allCourses.filter(c => [2, 3, 4].includes(c.status));
+    }
+  }
         },
         methods: {
-            async launchCourse(courseId) {
-                // FRONT-END STUB (no backend required yet)
-                const TEST_SCOS = {
-                    "teleworkCourseId": "/content/scorm/telework/scormcontent/index.html"
-                };
-                const demoLaunch = TEST_SCOS[courseId] || "/content/scorm/telework/scormcontent/index.html";
 
-                const registrationId = `reg-${courseId}-${Date.now()}`;
-                const scoId = `sco-demo`;
-                const preloadCmi = {
-                    "cmi.core.lesson_status": "incomplete",
-                    "cmi.core.lesson_location": "",
-                    "cmi.suspend_data": "",
-                    "cmi.core.score.raw": "",
-                    "cmi.core.total_time": "0000:00:00.00"
-                };
-
-                const courseTitle =
-                    this.allCourses.find(c => c.courseSysId === courseId)?.subjectTitle || "Course";
-
-                this.player = {
-                    launchUrl: demoLaunch,
-                    registrationId,
-                    scoId,
-                    preloadCmi,
-                    title: courseTitle
-                };
-                this.isPlaying = true;
+            openDetails(course) {
+                this.detailsCourse = course;
+                this.showDetailsModal = true;
             },
+            closeDetails() {
+                this.showDetailsModal = false;
+                this.detailsCourse = null;
+            },
+            async launchCourse(courseId, label = "Launch Course") {
+  const forceNewAttempt = (label || "").toLowerCase().includes("retake");
+  const c = this.allCourses.find(x => x.courseSysId === courseId);
+  if (!c) return;
 
+  if (c.format !== 2) {
+    alert("This course is not an Online Training (SCORM).");
+    return;
+  }
+
+  if (!c.videoUrl) {
+    alert("SCORM URL (VideoURL) is missing for this training.");
+    return;
+  }
+
+  // =========================================
+  //  LOCAL (ACTIVE)
+  // BASE_URL should be "/"
+  // =========================================
+  const base = (process.env.BASE_URL || "/").replace(/\/$/, "");
+  const launchUrl = `${base}${c.videoUrl}`;
+
+  // =========================================
+  //  AIDEV (COMMENTED)
+  // BASE_URL should be "/HIVTrainingDemo/"
+  // If you want to hardcode instead of relying on BASE_URL:
+  // const AIDEV_BASE = "http://aidev/HIVTrainingDemo";
+  // const launchUrl = `${AIDEV_BASE}${c.videoUrl}`;
+  // =========================================
+
+  // ✅ Backend expects GUID (string) in InitRequest.userId
+  const userId = localStorage.getItem("userId");
+  if (!userId) {
+    alert("userId missing. Please login again (userId not found in localStorage).");
+    return;
+  }
+
+  // quick GUID format check (prevents silent 400)
+  const guidRegex =
+    /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/;
+  if (!guidRegex.test(userId)) {
+    alert(`userId in localStorage is not a valid GUID:\n${userId}\n\nFix: store the real Guid userId after login.`);
+    return;
+  }
+
+  // ✅ IMPORTANT: your backend InitRequest has scoId as int?
+  // so DO NOT send "sco-demo" string
+  const scoId = 1; // choose 1 as a stable default (or use null if you don't care)
+
+  try {
+    const initRes = await apiClient.post(`/scorm/runtime/init`, {
+      userId,             // ✅ GUID string
+      scormId: courseId,  // ✅ int
+        scoId,
+        forceNewAttempt
+    });
+
+    const { registrationId, preloadCmi, scoId: serverScoId } = initRes.data;
+
+    const courseTitle = c.subjectTitle || "Course";
+
+    this.player = {
+      launchUrl,
+      registrationId,
+      // use serverScoId if backend returns it, fallback to our scoId
+      scoId: serverScoId ?? String(scoId),
+      preloadCmi,
+      title: courseTitle
+    };
+
+    this.isPlaying = true;
+  } catch (err) {
+    const msg = err?.response?.data || err?.message || err;
+    console.error("SCORM init failed:", msg, err);
+
+    // show helpful backend message (400/404/etc)
+    alert(typeof msg === "string" ? msg : "Unable to start SCORM session. Please try again.");
+  }
+},
             exitPlayer() {
                 this.isPlaying = false;
                 this.player = null;
@@ -218,8 +296,10 @@
                 this.loading = true;
                 try {
                     const res = await apiClient.get(`/Course/user-courses/${userId}`);
-                    this.allCourses = res.data?.$values || res.data || [];
-                } catch (err) {
+                    this.allCourses = (res.data?.$values || res.data || []).map(c => ({
+                        ...c,
+                        formatLabel: c.formatLabel ?? c.FormatLabel ?? null
+                    }));                } catch (err) {
                     console.error("Error fetching user courses:", err);
                 } finally {
                     this.loading = false;
@@ -317,6 +397,20 @@
         border-radius: 12px;
         background-size: cover;
         background-position: center;
+        position: relative; 
+        overflow: hidden;
+    }
+    .format-badge {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        background: rgba(0, 0, 0, 0.65);
+        color: white;
+        backdrop-filter: blur(4px);
     }
 
     .course-details {
@@ -344,7 +438,8 @@
         min-width: 140px;
     }
 
-    .launch-btn, .drop-btn, .certificate-btn {
+    /* add details-btn here */
+    .launch-btn, .drop-btn, .certificate-btn, .details-btn {
         padding: 8px 16px;
         border-radius: 20px;
         border: none;
@@ -466,4 +561,27 @@
             height: 160px;
         }
     }
+    .course-media {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 180px; /* match image width */
+    }
+
+    .format-badge-outside {
+        align-self: flex-start;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        background: rgba(0,0,0,0.65);
+        color: #fff;
+    }
+    .details-btn {
+        background-color: #607d8b; /* blue-grey */
+    }
+
+        .details-btn:hover {
+            background-color: #455a64;
+        }
 </style>
