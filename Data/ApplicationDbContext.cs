@@ -149,6 +149,13 @@ namespace HIVTraining_Vue.Data
         public DbSet<LkPronoun> LkPronouns { get; set; } = default!;
         public DbSet<LkWorkLocation> LkWorkLocations { get; set; } = default!;
 
+        public virtual DbSet<ScormAiccSession> ScormAiccSessions { get; set; }
+        public virtual DbSet<ScormScoesTrack> ScormScoesTracks { get; set; }
+
+        // optional
+        public virtual DbSet<Scorm> Scorms { get; set; }
+        public virtual DbSet<ScormScoesData> ScormScoesDatas { get; set; }
+
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -1277,6 +1284,40 @@ namespace HIVTraining_Vue.Data
                 entity.Property(e => e.Username)
                     .HasMaxLength(256)
                     .HasColumnName("username");
+            });
+
+            modelBuilder.Entity<ScormAiccSession>(entity =>
+            {
+                entity.ToTable("Scorm_aicc_session");
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.Userid).HasColumnName("userid");
+                entity.Property(e => e.Scormid).HasColumnName("scormid");
+                entity.Property(e => e.Hacpsession).HasColumnName("hacpsession");
+                entity.Property(e => e.Scoid).HasColumnName("scoid");
+                entity.Property(e => e.Scormmode).HasColumnName("scormmode");
+                entity.Property(e => e.Scormstatus).HasColumnName("scormstatus");
+                entity.Property(e => e.Attempt).HasColumnName("attempt");
+                entity.Property(e => e.Lessonstatus).HasColumnName("lessonstatus");
+                entity.Property(e => e.Sessiontime).HasColumnName("sessiontime");
+                entity.Property(e => e.Timecreated).HasColumnName("timecreated");
+                entity.Property(e => e.Timemodified).HasColumnName("timemodified");
+            });
+
+            modelBuilder.Entity<ScormScoesTrack>(entity =>
+            {
+                entity.ToTable("Scorm_scoes_track");
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.Userid).HasColumnName("userid");
+                entity.Property(e => e.Scormid).HasColumnName("scormid");
+                entity.Property(e => e.Scoid).HasColumnName("scoid");
+                entity.Property(e => e.Attempt).HasColumnName("attempt");
+                entity.Property(e => e.Element).HasColumnName("element");
+                entity.Property(e => e.Value).HasColumnName("value");
+                entity.Property(e => e.Timemodified).HasColumnName("timemodified");
             });
 
             OnModelCreatingPartial(modelBuilder);

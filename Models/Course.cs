@@ -87,4 +87,7 @@ public partial class Course
     public virtual ICollection<CourseSession> Sessions { get; set; } = new List<CourseSession>();
     public string? VirtualUrl { get; set; }
 
+    public decimal? BaseHours { get; set; }
+
+    public DateTime? MarkAsNewUntil { get; set; }
 }
