@@ -254,7 +254,9 @@ namespace HIVTraining_Vue.Server.Controllers
                 c.OtherFund,
                 c.Hidden,
                 c.Information,
+                c.BaseHours,
                 isMultiSession = c.IsMultiSession,
+                c.MarkAsNewUntil,
                 sessions
             });
         }
@@ -291,6 +293,9 @@ namespace HIVTraining_Vue.Server.Controllers
             existingCourse.Hidden = updated.Hidden;
             existingCourse.Information = updated.Information;
             existingCourse.IsMultiSession = updated.IsMultiSession;
+            existingCourse.BaseHours = updated.BaseHours;
+            existingCourse.MarkAsNewUntil = updated.MarkAsNewUntil;
+
             existingCourse.DateModified = DateTime.UtcNow;
 
             // Clear existing sessions

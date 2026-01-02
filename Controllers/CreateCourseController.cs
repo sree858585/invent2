@@ -97,6 +97,7 @@ namespace HIVTraining_Vue.Server.Controllers
             var course = request.Course;
             course.DateEntered = DateTime.UtcNow;
             course.DateModified = DateTime.UtcNow;
+            course.MarkAsNewUntil = course.MarkAsNewUntil;
 
             _context.Courses.Add(course);
             await _context.SaveChangesAsync();
@@ -115,6 +116,19 @@ namespace HIVTraining_Vue.Server.Controllers
 
                 _context.CourseSessions.AddRange(sessions);
                 await _context.SaveChangesAsync();
+            }
+            if (course.CourseTimeBegin.HasValue && course.CourseTimeEnd.HasValue)
+            {
+                var start = course.CourseTimeBegin.Value;
+                var end = course.CourseTimeEnd.Value;
+
+                // total hours in decimal
+                double totalHours = (end - start).TotalHours;
+
+                // cannot be negative even if user makes mistake
+                if (totalHours < 0) totalHours = 0;
+
+                course.BaseHours = (decimal)Math.Round(totalHours, 2);
             }
 
             return Ok(new { message = "Course scheduled successfully!", courseId = course.CourseSysId });

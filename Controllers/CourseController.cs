@@ -189,6 +189,73 @@ namespace HIVTraining.Controllers
             return max + 1;
         }
 
+        // helpers
+        private static double? ParseDoubleInvariant(string? s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return null;
+            if (double.TryParse(s.Trim(), System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var d))
+                return d;
+            return null;
+        }
+
+        private static int ClampPct(double v)
+        {
+            if (v < 0) v = 0;
+            if (v > 100) v = 100;
+            return (int)Math.Round(v);
+        }
+
+        private static int ComputeProgressPercent(
+    string? progressMeasure,
+    string? completionStatus2004,
+    string? lessonStatus12,
+    string? successStatus2004,
+    string? scoreRaw,
+    string? lessonLocation,
+    string? suspendData
+)
+        {
+            string Norm(string? x) => (x ?? "").Trim().ToLowerInvariant();
+
+            var ls = Norm(lessonStatus12);
+            var cs = Norm(completionStatus2004);
+            var ss = Norm(successStatus2004);
+
+            if (ls is "completed" or "passed" or "failed") return 100;
+            if (cs == "completed") return 100;
+            if (ss is "passed" or "failed") return 100;
+
+            var pm = ParseDoubleInvariant(progressMeasure);
+            if (pm is not null)
+            {
+                var val = pm.Value;
+                if (val <= 1.0) return ClampPct(val * 100.0);
+                return ClampPct(val);
+            }
+
+            var sr = ParseDoubleInvariant(scoreRaw);
+            if (sr is not null) return ClampPct(sr.Value);
+
+            // ✅ Try numeric lesson_location (your fallback sometimes stores 9/100)
+            var ll = ParseDoubleInvariant(lessonLocation);
+            if (ll is not null) return ClampPct(ll.Value);
+
+            // ✅ Try {"pct":9} from suspend_data
+            if (!string.IsNullOrWhiteSpace(suspendData))
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(suspendData);
+                    if (doc.RootElement.TryGetProperty("pct", out var pctEl) && pctEl.TryGetInt32(out var pct))
+                        return ClampPct(pct);
+                }
+                catch { /* ignore bad JSON */ }
+            }
+
+            return 0;
+        }
+
         // Promote from waitlist if seats are available
         private async Task PromoteFromWaitlistAsync(int courseId)
         {
@@ -384,32 +451,159 @@ namespace HIVTraining.Controllers
         public async Task<IActionResult> GetUserCourses(Guid userId)
         {
             var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == userId);
-            if (user == null)
-                return NotFound(new { message = "User not found" });
+            if (user == null) return NotFound(new { message = "User not found" });
 
-            var validStatuses = new List<int> { 1, 2, 3, 4 }; // Registered, Cancelled, Attended, Absent
+            var validStatuses = new List<int> { 1, 2, 3, 4 };
 
             var userCourses = await (
                 from uc in _context.UserCourses
                 join c in _context.Courses on uc.CourseSysId equals c.CourseSysId
                 join s in _context.Subjects on c.SubjectSysId equals s.SubjectSysId into subjJoin
                 from subject in subjJoin.DefaultIfEmpty()
-
-                where uc.UserSysId == user.UserSysId && uc.Status.HasValue && validStatuses.Contains(uc.Status.Value)
+                where uc.UserSysId == user.UserSysId
+                   && uc.Status.HasValue
+                   && validStatuses.Contains(uc.Status.Value)
                 select new
                 {
                     uc.CourseSysId,
                     uc.Status,
-                    uc.IsWaitlisted, 
+                    uc.IsWaitlisted,
                     c.CourseDate,
                     c.CourseTime,
                     c.MaxSeats,
+                    c.Format,
+                    VideoUrl = subject != null ? subject.VideoUrl : null,
+                    IsOnlineTraining = subject != null && subject.IsOnlineTraining,
                     SubjectTitle = subject.CourseTitle,
                     SubjectDescription = subject.Description
                 }
             ).ToListAsync();
 
-            return Ok(userCourses);
+            // Only SCORM courses need SCORM progress
+            var scormCourseIds = userCourses
+     .Where(x => x.Format.HasValue && x.Format.Value == 2)
+     .Select(x => x.CourseSysId)
+     .Where(id => id > 0)
+     .Distinct()
+     .ToList(); // ✅ this becomes List<int>
+
+            // Latest session per course (max Attempt)
+            var lastSessions = await _context.ScormAiccSessions
+                .Where(s => s.Userid == user.UserSysId && scormCourseIds.Contains(s.Scormid))
+                .GroupBy(s => s.Scormid)
+                .Select(g => g.OrderByDescending(x => x.Attempt)
+                              .ThenByDescending(x => x.Timemodified)
+                              .FirstOrDefault())
+                .ToListAsync();
+
+            var sessionByScormId = lastSessions
+                .Where(s => s != null)
+                .ToDictionary(s => s!.Scormid, s => s!);
+
+            // Pull track values for those latest attempts (in one query)
+            var attempts = lastSessions.Where(s => s != null).Select(s => s!.Attempt).Distinct().ToList();
+
+            var tracks = await _context.ScormScoesTracks
+    .Where(t => t.Userid.HasValue && t.Userid.Value == user.UserSysId
+             && t.Scormid.HasValue && scormCourseIds.Contains(t.Scormid.Value)
+             && t.Attempt.HasValue && attempts.Contains(t.Attempt.Value)
+             && (t.Element == "cmi.progress_measure"
+              || t.Element == "cmi.completion_status"
+              || t.Element == "cmi.success_status"
+              || t.Element == "cmi.core.lesson_status"
+              || t.Element == "cmi.core.score.raw"
+              || t.Element == "cmi.core.lesson_location"
+              || t.Element == "cmi.suspend_data"))   // ✅ add suspend_data too (useful)
+    .ToListAsync();
+
+            // Build a lookup: (scormId, attempt) -> latest value per element
+            var trackLookup = tracks
+    .Where(t => t.Scormid.HasValue && t.Attempt.HasValue && !string.IsNullOrWhiteSpace(t.Element))
+    .GroupBy(t => new { Scormid = t.Scormid!.Value, Attempt = t.Attempt!.Value, Element = t.Element! })
+    .ToDictionary(
+        g => (g.Key.Scormid, g.Key.Attempt, g.Key.Element),
+        g => g.OrderByDescending(x => x.Timemodified ?? 0).First().Value
+    );
+
+            var formatDict = await _context.LkFormats
+    .AsNoTracking()
+    .ToDictionaryAsync(f => f.Code, f => f.Value);
+
+            object CourseDto(dynamic x)
+            {
+                int progress = 0;
+                bool hasSession = false;
+                bool completed = false;
+                string label = "Launch Course";
+
+                if (x.Format == 2)
+                {
+                    ScormAiccSession? sess = null;
+                    sessionByScormId.TryGetValue((int)x.CourseSysId, out sess);
+
+                    if (sess != null)
+                    {
+                        hasSession = true;
+
+                        completed =
+                            string.Equals(sess.Scormstatus, "completed", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(sess.Lessonstatus, "completed", StringComparison.OrdinalIgnoreCase);
+
+                        // session Attempt is int? in your model
+                        int attempt = sess.Attempt ?? 0;
+
+                        trackLookup.TryGetValue((sess.Scormid, attempt, "cmi.progress_measure"), out var pm);
+                        trackLookup.TryGetValue((sess.Scormid, attempt, "cmi.completion_status"), out var cs);
+                        trackLookup.TryGetValue((sess.Scormid, attempt, "cmi.core.lesson_status"), out var ls);
+                        trackLookup.TryGetValue((sess.Scormid, attempt, "cmi.success_status"), out var ss);
+                        trackLookup.TryGetValue((sess.Scormid, attempt, "cmi.core.score.raw"), out var sr);
+                        trackLookup.TryGetValue((sess.Scormid, attempt, "cmi.core.lesson_location"), out var ll);
+                        trackLookup.TryGetValue((sess.Scormid, attempt, "cmi.suspend_data"), out var sd);
+
+                        progress = ComputeProgressPercent(pm, cs, ls, ss, sr, ll, sd);
+
+                        if (completed || progress >= 100)
+                        {
+                            progress = 100;
+                            label = "Retake the course";
+                        }
+                        else
+                        {
+                            label = (progress > 0) ? "Resume Course" : "Launch Course";
+                        }
+                    }
+                }
+
+                int? fmt = x.Format as int?; // or: (int?)x.Format
+                string? formatLabel = null;
+
+                if (fmt.HasValue && formatDict.TryGetValue(fmt.Value, out var lbl))
+                    formatLabel = lbl;
+
+                return new
+                {
+                    x.CourseSysId,
+                    x.Status,
+                    x.IsWaitlisted,
+                    x.CourseDate,
+                    x.CourseTime,
+                    x.MaxSeats,
+                    x.Format,
+                    FormatLabel = formatLabel,
+                    x.VideoUrl,
+                    x.IsOnlineTraining,
+                    x.SubjectTitle,
+                    x.SubjectDescription,
+
+                    ScormProgress = progress,
+                    ScormHasSession = hasSession,
+                    ScormCompleted = completed,
+                    ScormButtonLabel = label
+                };
+            }
+
+            var result = userCourses.Select(x => CourseDto(x)).ToList();
+            return Ok(result);
         }
         [HttpGet("{id}")]
         public async Task<IActionResult> GetCourseById(int id)
@@ -427,12 +621,18 @@ namespace HIVTraining.Controllers
             {
                 course.CourseSysId,
                 course.CourseDate,
+                course.EndDate,          // ✅ add
                 course.CourseTime,
+                course.RegDeadLine,      // ✅ add
                 course.Information,
                 course.City,
                 course.TrainingLocation,
                 course.MaxSeats,
                 IsMultiSession = course.IsMultiSession,
+                course.VirtualUrl,
+
+                TrainingUrl = course.Subject != null ? course.Subject.VideoUrl : null,  // ✅ add
+
 
                 SubjectTitle = course.Subject?.CourseTitle,
                 SubjectDescription = course.Subject?.Description,
@@ -482,13 +682,16 @@ namespace HIVTraining.Controllers
                     .FirstOrDefault(),
 
                 Sessions = await _context.CourseSessions
-                    .Where(s => s.CourseSysId == course.CourseSysId)
-                    .Select(s => new
-                    {
-                        Date = s.SessionDate,
-                        StartTime = s.StartTime,
-                        EndTime = s.EndTime
-                    }).ToListAsync()
+  .Where(s => s.CourseSysId == course.CourseSysId)
+  .Select(s => new {
+      SessionDate = s.SessionDate,
+      StartTime = s.StartTime,
+      EndTime = s.EndTime,
+      SessionUrl = s.SessionUrl,
+      TrainingLocation = s.TrainingLocation
+  })
+  .ToListAsync()
+
             };
 
             return Ok(result);
