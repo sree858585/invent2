@@ -156,10 +156,32 @@ namespace HIVTraining_Vue.Data
         public virtual DbSet<Scorm> Scorms { get; set; }
         public virtual DbSet<ScormScoesData> ScormScoesDatas { get; set; }
 
+        public DbSet<CustomCalendarEvent> CustomCalendarEvents { get; set; }
+
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder); // Important to call this for Identity support
+
+            modelBuilder.Entity<Scorm>(e =>
+            {
+                e.ToTable("Scorm", t => t.ExcludeFromMigrations());
+            });
+
+            modelBuilder.Entity<ScormAiccSession>(e =>
+            {
+                e.ToTable("Scorm_aicc_session", t => t.ExcludeFromMigrations());
+            });
+
+            modelBuilder.Entity<ScormScoesTrack>(e =>
+            {
+                e.ToTable("Scorm_scoes_track", t => t.ExcludeFromMigrations());
+            });
+
+            modelBuilder.Entity<ScormScoesData>(e =>
+            {
+                e.ToTable("ScormScoesDatas", t => t.ExcludeFromMigrations());
+            });
 
             modelBuilder.Entity<AppErrorLog>(entity =>
             {
