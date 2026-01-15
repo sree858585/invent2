@@ -110,6 +110,8 @@
                             <li><router-link to="/system/training-center">Training Centers</router-link></li>
                             <li><router-link to="/system/instructor-management">Instructor Management</router-link></li>
                             <li><router-link to="/system/course-list">Course List</router-link></li>
+                            <li><router-link to="/system/custom-calendar-events">Custom Calendar Events</router-link></li>
+
                         </ul>
                     </li>
 

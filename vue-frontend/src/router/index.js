@@ -14,18 +14,29 @@ import InstructorManagement from "@/components/InstructorManagement.vue";
 import CourseListManager from "@/components/CourseListManager.vue";
 import MarkAttendance from "@/components/MarkAttendance.vue";
 import ViewAttendance from "@/components/ViewAttendance.vue";
-import RoleManagement from '@/components/RoleManagement.vue';
+import RoleManagement from "@/components/RoleManagement.vue";
 import TrainingCalendar from "@/components/TrainingCalendar.vue";
 
+// ✅ NEW: Admin page for custom calendar events
+import CustomCalendarEventsAdmin from "@/components/CustomCalendarEventsAdmin.vue";
 
+// ✅ Route guard (Admin/Manager only)
+const requireAdminOrManager = (to, from, next) => {
+    const isAuthenticated = !!localStorage.getItem("jwtToken");
+    const role = localStorage.getItem("userRole"); // must exist
+    const allowed = role === "Admin" || role === "Manager";
 
+    if (!isAuthenticated) return next("/home");
+    if (!allowed) return next("/home");
 
+    next();
+};
 
 const routes = [
     {
         path: "/home",
         name: "Home",
-        component: DummyPage
+        component: DummyPage,
     },
     {
         path: "/profile/view/:id",
@@ -34,12 +45,9 @@ const routes = [
         props: true,
         beforeEnter: (to, from, next) => {
             const isAuthenticated = !!localStorage.getItem("jwtToken");
-            if (!isAuthenticated) {
-                next("/home");
-            } else {
-                next();
-            }
-        }
+            if (!isAuthenticated) next("/home");
+            else next();
+        },
     },
     {
         path: "/course-list/:format",
@@ -66,66 +74,75 @@ const routes = [
         path: "/my-courses/:status",
         name: "MyCourses",
         component: MyCourses,
-        props: route => ({ status: route.params.status })
+        props: (route) => ({ status: route.params.status }),
     },
     {
         path: "/course-module",
         name: "CourseModule",
-        component: CourseModule
+        component: CourseModule,
     },
     {
         path: "/course-management",
         name: "CourseManagement",
-        component: CourseManagement
+        component: CourseManagement,
     },
     {
         path: "/system/training-title",
         name: "TrainingTitle",
-        component: TrainingTitle
+        component: TrainingTitle,
     },
     {
         path: "/system/training-center",
         name: "TrainingCenter",
-        component: TrainingCenter
+        component: TrainingCenter,
     },
     {
         path: "/system/instructor-management",
         name: "InstructorManagement",
-        component: InstructorManagement
+        component: InstructorManagement,
     },
     {
         path: "/system/course-list",
         name: "CourseListManager",
-        component: CourseListManager
+        component: CourseListManager,
     },
+
+    // ✅ NEW ROUTE
+    {
+        path: "/system/custom-calendar-events",
+        name: "CustomCalendarEventsAdmin",
+        component: CustomCalendarEventsAdmin,
+        beforeEnter: requireAdminOrManager,
+    },
+
     {
         path: "/attendance/mark",
         name: "MarkAttendance",
-        component: MarkAttendance
+        component: MarkAttendance,
     },
     {
         path: "/attendance/view",
         name: "ViewAttendance",
-        component: ViewAttendance
+        component: ViewAttendance,
     },
     {
-        path: '/role-management',
-        name: 'RoleManagement',
-        component: RoleManagement
+        path: "/role-management",
+        name: "RoleManagement",
+        component: RoleManagement,
     },
     {
         path: "/training-calendar",
         name: "TrainingCalendar",
-        component: TrainingCalendar
+        component: TrainingCalendar,
     },
     {
         path: "/",
-        redirect: "/home" // ✅ Redirect to home by default
+        redirect: "/home",
     },
     {
         path: "/:pathMatch(.*)*",
-        redirect: "/home" // ✅ Fallback route to home for invalid paths
-    }
+        redirect: "/home",
+    },
 ];
 
 const router = createRouter({
