@@ -11,7 +11,9 @@ public partial class Subject
 
     public string? Description { get; set; }
 
-    public int? Category { get; set; }
+    //public int? Category { get; set; }
+
+    public int? TopicCode { get; set; }     // NEW (single-topic)
 
     public bool Ai { get; set; }
 
