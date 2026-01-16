@@ -21,6 +21,17 @@ namespace HIVTraining_Vue.Server.Controllers
             var regions = await _context.LkRegionCnties.ToListAsync();
             return Ok(regions);
         }
+        [HttpGet("topics")]
+        public async Task<IActionResult> GetTopics()
+        {
+            var topics = await _context.LkTopics
+                .OrderBy(t => t.SortKey ?? 9999)
+                .ThenBy(t => t.Value)
+                .Select(t => new { t.Code, t.Value })
+                .ToListAsync();
+
+            return Ok(topics);
+        }
 
         [HttpGet("formats")]
         public async Task<IActionResult> GetFormats()

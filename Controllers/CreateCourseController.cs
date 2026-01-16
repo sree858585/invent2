@@ -46,7 +46,7 @@ namespace HIVTraining_Vue.Server.Controllers
         {
             s.SubjectSysId,
             s.CourseTitle,
-            s.Category  // <-- this is the fix
+            s.TopicCode  // <-- this is the fix
         })
         .ToListAsync();
 
@@ -74,11 +74,11 @@ namespace HIVTraining_Vue.Server.Controllers
                 Formats = formats
             });
         }
-        [HttpGet("subjectsByCategory/{categoryCode}")]
-        public async Task<IActionResult> GetSubjectsByCategory(int categoryCode)
+        [HttpGet("subjectsByTopic/{topicCode}")]
+        public async Task<IActionResult> GetSubjectsByTopic(int topicCode)
         {
             var subjects = await _context.Subjects
-                .Where(s => s.Active && s.Category == categoryCode)
+                .Where(s => s.Active && s.TopicCode == topicCode)
                 .Select(s => new { s.SubjectSysId, s.CourseTitle })
                 .ToListAsync();
 
