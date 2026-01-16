@@ -167,57 +167,162 @@ namespace HIVTraining_Vue.Server.Controllers
         [HttpGet("{id}")]
         public async Task<IActionResult> GetTitleById(int id)
         {
-            var subject = await _context.Subjects.FindAsync(id);
-            if (subject == null)
-                return NotFound();
+            var subject = await _context.Subjects.FirstOrDefaultAsync(s => s.SubjectSysId == id);
+            if (subject == null) return NotFound();
 
-            return Ok(subject);
+            var topicCodes = await _context.SubjectTopics
+                .Where(st => st.SubjectSysId == id)
+                .Select(st => st.TopicCode)
+                .ToListAsync();
+
+            return Ok(new
+            {
+                subject.SubjectSysId,
+                subject.CourseTitle,
+                subject.Description,
+                subject.Cnecredits,
+                subject.Oasascredits,
+                subject.CertDescription,
+                subject.MiscCertDesc,
+                subject.VideoUrl,
+                subject.IsOnlineTraining,
+                subject.MarkAsNewUntil,
+                topicCodes
+            });
         }
 
         [HttpPut("update/{id}")]
-        public async Task<IActionResult> UpdateTitle(int id, [FromBody] Subject updated)
+        public async Task<IActionResult> UpdateTitle(int id, [FromBody] JsonElement body)
         {
-            if (updated == null)
-                return BadRequest(new { message = "Request body is required." });
-
-            var existing = await _context.Subjects.FindAsync(id);
-            if (existing == null)
-                return NotFound();
-
-            // ✅ Category no longer used
-            // existing.Category = updated.Category;
-
-            // ✅ Validate TopicCode if provided
-            if (updated.TopicCode.HasValue)
+            try
             {
-                var topicExists = await _context.LkTopics
-                    .AnyAsync(t => t.Code == updated.TopicCode.Value);
+                var existing = await _context.Subjects.FirstOrDefaultAsync(s => s.SubjectSysId == id);
+                if (existing == null)
+                    return NotFound(new { message = "Title not found." });
 
-                if (!topicExists)
-                    return BadRequest(new { message = "Invalid topic selected." });
+                // capture old value BEFORE overwrite
+                bool wasOnline = existing.IsOnlineTraining;
+
+                string? courseTitle = body.TryGetProperty("courseTitle", out var ct) ? ct.GetString() : null;
+                if (string.IsNullOrWhiteSpace(courseTitle))
+                    return BadRequest(new { message = "Course title is required." });
+
+                existing.CourseTitle = courseTitle;
+                existing.Description = body.TryGetProperty("description", out var d) ? d.GetString() : null;
+
+                existing.Cnecredits = body.TryGetProperty("cnecredits", out var cne) && cne.ValueKind == JsonValueKind.True;
+                existing.Oasascredits = body.TryGetProperty("oasascredits", out var oa) && oa.ValueKind == JsonValueKind.True;
+
+                existing.CertDescription = body.TryGetProperty("certDescription", out var cd) ? cd.GetString() : null;
+                existing.MiscCertDesc = body.TryGetProperty("miscCertDesc", out var md) ? md.GetString() : null;
+
+                existing.VideoUrl = body.TryGetProperty("videoUrl", out var vu) ? vu.GetString() : null;
+
+                bool newIsOnline = body.TryGetProperty("isOnlineTraining", out var ot) && ot.ValueKind == JsonValueKind.True;
+                existing.IsOnlineTraining = newIsOnline;
+
+                existing.MarkAsNewUntil =
+                    body.TryGetProperty("markAsNewUntil", out var mu) && mu.ValueKind != JsonValueKind.Null && !string.IsNullOrWhiteSpace(mu.GetString())
+                        ? DateTime.Parse(mu.GetString()!)
+                        : null;
+
+                // ---- topicCodes (required) ----
+                var topicCodes = new List<int>();
+                if (body.TryGetProperty("topicCodes", out var tc) && tc.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var x in tc.EnumerateArray())
+                        if (x.ValueKind == JsonValueKind.Number) topicCodes.Add(x.GetInt32());
+                }
+                topicCodes = topicCodes.Distinct().ToList();
+
+                if (topicCodes.Count == 0)
+                    return BadRequest(new { message = "Please select at least one topic." });
+
+                var validCount = await _context.LkTopics.CountAsync(t => topicCodes.Contains(t.Code));
+                if (validCount != topicCodes.Count)
+                    return BadRequest(new { message = "One or more selected topics are invalid." });
+
+                var strategy = _context.Database.CreateExecutionStrategy();
+                await strategy.ExecuteAsync(async () =>
+                {
+                    await using var tx = await _context.Database.BeginTransactionAsync();
+
+                    // 1) Update Subject row
+                    await _context.SaveChangesAsync();
+
+                    // 2) Replace join rows in SubjectTopics
+                    var existingLinks = await _context.SubjectTopics
+                        .Where(st => st.SubjectSysId == id)
+                        .ToListAsync();
+
+                    _context.SubjectTopics.RemoveRange(existingLinks);
+                    await _context.SaveChangesAsync();
+
+                    foreach (var code in topicCodes)
+                    {
+                        _context.SubjectTopics.Add(new SubjectTopic
+                        {
+                            SubjectSysId = id,
+                            TopicCode = code
+                        });
+                    }
+                    await _context.SaveChangesAsync();
+
+                    // ✅ 3) If changed from NOT online -> online, create/update Course
+                    if (!wasOnline && newIsOnline)
+                    {
+                        var siteId = await _context.Sites
+                            .Where(s => s.Active)
+                            .Select(s => s.SiteSysId)
+                            .FirstOrDefaultAsync();
+
+                        if (siteId == 0) throw new Exception("No active Site found.");
+
+                        int? onlineFormatCode = await _context.LkFormats
+                            .Where(f => f.Value != null && f.Value.ToLower().Contains("online"))
+                            .Select(f => (int?)f.Code)
+                            .FirstOrDefaultAsync();
+
+                        // if course already exists for this subject, update it; else create
+                        var existingCourse = await _context.Courses
+                            .FirstOrDefaultAsync(c => c.SubjectSysId == id);
+
+                        if (existingCourse == null)
+                        {
+                            _context.Courses.Add(new Course
+                            {
+                                SiteSysId = siteId,
+                                SubjectSysId = id,
+                                Hidden = false,
+                                VirtualUrl = existing.VideoUrl,
+                                Format = onlineFormatCode,
+                                DateEntered = DateTime.UtcNow,
+                                DateModified = DateTime.UtcNow,
+                                MarkAsNewUntil = existing.MarkAsNewUntil
+                            });
+                        }
+                        else
+                        {
+                            existingCourse.SiteSysId = siteId;
+                            existingCourse.Hidden = false;
+                            existingCourse.VirtualUrl = existing.VideoUrl;
+                            existingCourse.Format = onlineFormatCode;
+                            existingCourse.DateModified = DateTime.UtcNow;
+                            existingCourse.MarkAsNewUntil = existing.MarkAsNewUntil;
+                        }
+
+                        await _context.SaveChangesAsync();
+                    }
+
+                    await tx.CommitAsync();
+                });
+
+                return Ok(new { message = "Title updated successfully!" });
             }
-
-            existing.CourseTitle = updated.CourseTitle;
-            existing.Description = updated.Description;
-
-            existing.TopicCode = updated.TopicCode; // ✅ NEW
-
-            existing.Active = updated.Active;
-            existing.Ai = updated.Ai;
-            existing.Cnecredits = updated.Cnecredits;
-            existing.Oasascredits = updated.Oasascredits;
-            existing.CreditHrs = updated.CreditHrs;
-            existing.Is3rdParty = updated.Is3rdParty;
-            existing.A3rdPartyCrseId = updated.A3rdPartyCrseId;
-            existing.CertDescription = updated.CertDescription;
-            existing.MiscCertDesc = updated.MiscCertDesc;
-            existing.VideoUrl = updated.VideoUrl;
-            existing.IsOnlineTraining = updated.IsOnlineTraining;
-            existing.MarkAsNewUntil = updated.MarkAsNewUntil;
-
-            await _context.SaveChangesAsync();
-
-            return Ok(new { message = "Title updated successfully!" });
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Failed to update title.", error = ex.Message });
+            }
         }
 
         [HttpDelete("delete/{id}")]
