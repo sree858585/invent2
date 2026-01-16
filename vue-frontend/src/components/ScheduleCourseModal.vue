@@ -52,15 +52,22 @@
                             </div>
 
                             <div class="form-group">
-                                <label>Category <span class="required">*</span></label>
-                                <select v-model="form.category" required>
-                                    <option value="">-- Select --</option>
-                                    <option v-for="category in lookupData.categories"
-                                            :key="category.code"
-                                            :value="category.code">
-                                        {{ category.value }}
-                                    </option>
-                                </select>
+                                <label>Topics <span class="required">*</span></label>
+
+                                <div class="topic-multi" :class="{ 'required-border': topicError }">
+                                    <label v-for="t in lookupData.topics" :key="t.code" class="topic-item">
+                                        <input type="checkbox" :value="t.code" v-model="form.topicCodes" />
+                                        <span>{{ t.value }}</span>
+                                    </label>
+                                </div>
+
+                                <small v-if="topicError" class="error-text">
+                                    Please select at least one topic.
+                                </small>
+
+                                <small class="hint" v-else-if="(form.topicCodes || []).length">
+                                    Selected: {{ (form.topicCodes || []).length }}
+                                </small>
                             </div>
                         </div>
 
@@ -68,9 +75,9 @@
                         <div class="form-column">
                             <div class="form-group">
                                 <label>Course Title <span class="required">*</span></label>
-                                <select v-model="form.courseTitle" required>
+                                <select v-model="form.courseTitle" :disabled="!(form.topicCodes || []).length" required>
                                     <option value="">-- Select --</option>
-                                    <option v-for="subject in filteredSubjects"
+                                    <option v-for="subject in filteredSubjects.filter(s => !s.isOnlineTraining)"
                                             :key="subject.subjectSysId"
                                             :value="subject.subjectSysId">
                                         {{ subject.courseTitle }}
@@ -368,7 +375,7 @@
                 form: {
                     trainingCenter: "",
                     region: "",
-                    category: "",
+                    topicCodes: [],
                     courseTitle: "",
                     instructor1: "",
                     instructor2: "",
@@ -392,7 +399,7 @@
                 lookupData: {
                     trainingCenters: [],
                     regions: [],
-                    categories: [],
+                    topics: [],
                     instructors: [],
                     deliverables: [],
                     formats: []
@@ -440,14 +447,17 @@
                     this.fetchLookupData();
                 }
             },
-            "form.category"(newCategory) {
-                if (newCategory) {
-                    this.fetchSubjectsByCategory(newCategory);
-                } else {
-                    this.filteredSubjects = [];
-                    this.form.courseTitle = "";
-                }
-            },
+            "form.topicCodes": {
+    deep: true,
+    handler(newTopics) {
+      if (Array.isArray(newTopics) && newTopics.length) {
+        this.fetchSubjectsByTopics(newTopics);
+      } else {
+        this.filteredSubjects = [];
+        this.form.courseTitle = "";
+      }
+    }
+  },
             // Optional: auto-add first session when toggle turned ON
             "form.isMultiSession"(val) {
                 if (val && this.form.sessions.length === 0) {
@@ -466,7 +476,7 @@
                 this.form = {
                     trainingCenter: "",
                     region: "",
-                    category: "",
+    topicCodes: [],     
                     courseTitle: "",
                     instructor1: "",
                     instructor2: "",
@@ -500,33 +510,50 @@
                 }
             },
             async fetchLookupData() {
-                try {
-                    const response = await apiClient.get("/CreateCourse/lookup");
+  try {
+    const response = await apiClient.get("/CreateCourse/lookup");
 
-                    this.lookupData = {
-                        trainingCenters: response.data.trainingCenters?.$values || [],
-                        regions: response.data.regions?.$values || [],
-                        categories: response.data.categories?.$values || [],
-                        instructors: response.data.instructors?.$values || [],
-                        deliverables: response.data.deliverables?.$values || [],
-                        formats: response.data.formats?.$values || []
-                    };
-                } catch (error) {
-                    console.error("Error fetching lookup data:", error);
-                }
-            },
-            async fetchSubjectsByCategory(categoryCode) {
-                try {
-                    const res = await apiClient.get(`/CreateCourse/subjectsByTopic/${categoryCode}`);
-                    this.filteredSubjects = res.data?.$values || [];
-                } catch (err) {
-                    console.error("Failed to load subjects by category", err);
-                }
-            },
+    this.lookupData = {
+      trainingCenters: response.data.trainingCenters?.$values || response.data.TrainingCenters?.$values || response.data.TrainingCenters || [],
+      regions: response.data.regions?.$values || response.data.Regions?.$values || response.data.Regions || [],
+      topics: response.data.topics?.$values || response.data.Topics?.$values || response.data.Topics || [],   // ✅
+      instructors: response.data.instructors?.$values || response.data.Instructors?.$values || response.data.Instructors || [],
+      deliverables: response.data.deliverables?.$values || response.data.Deliverables?.$values || response.data.Deliverables || [],
+      formats: response.data.formats?.$values || response.data.Formats?.$values || response.data.Formats || []
+    };
+  } catch (error) {
+    console.error("Error fetching lookup data:", error);
+  }
+},
+           async fetchSubjectsByTopics(topicCodes) {
+  try {
+    const payload = {
+      topicCodes: (topicCodes || []).map(Number).filter(n => !Number.isNaN(n))
+    };
+
+    const res = await apiClient.post("/CreateCourse/subjectsByTopics", payload);
+    this.filteredSubjects = res.data?.$values || res.data || [];
+
+    // if current title isn't in filtered list, clear it
+    const stillValid = this.filteredSubjects.some(x => x.subjectSysId === this.form.courseTitle);
+    if (!stillValid) this.form.courseTitle = "";
+  } catch (err) {
+    console.error("Failed to load subjects by topics", err);
+    this.filteredSubjects = [];
+    this.form.courseTitle = "";
+  }
+},
             closeModal() {
                 this.$emit("close");
             },
             async submitCourse() {
+                const topicCodes = (this.form.topicCodes || []).map(Number).filter(n => !Number.isNaN(n));
+if (topicCodes.length === 0) {
+  this.topicError = true;
+  alert("Please select at least one topic.");
+  return;
+}
+this.topicError = false;
                 try {
                     const courseTimeBegin =
                         this.form.startDate && this.form.startTime

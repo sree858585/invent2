@@ -31,7 +31,7 @@
                                 <label>Training Center *</label>
                                 <select v-model="form.trainingCenter" required>
                                     <option value="">-- Select --</option>
-                                    <option v-for="center in lookupData.trainingCenters.$values"
+                                    <option v-for="center in lookupData.trainingCenters"
                                             :key="center.siteSysId"
                                             :value="String(center.siteSysId)">
                                         {{ center.siteName }}
@@ -43,7 +43,7 @@
                                 <label>Region *</label>
                                 <select v-model="form.region" required>
                                     <option value="">-- Select --</option>
-                                    <option v-for="region in lookupData.regions.$values"
+                                    <option v-for="region in lookupData.regions"
                                             :key="region.code"
                                             :value="String(region.code)">
                                         {{ region.value }}
@@ -52,24 +52,28 @@
                             </div>
 
                             <div class="form-group">
-                                <label>Category *</label>
-                                <select v-model="form.category" required>
-                                    <option value="">-- Select --</option>
-                                    <option v-for="category in lookupData.categories.$values"
-                                            :key="category.code"
-                                            :value="String(category.code)">
-                                        {{ category.value }}
-                                    </option>
-                                </select>
+                                <label>Topics <span class="required">*</span></label>
+
+                                <div class="topic-multi" :class="{ 'required-border': topicError }">
+                                    <label v-for="t in (lookupData.topics || [])" :key="t.code" class="topic-item">
+                                        <input type="checkbox" :value="String(t.code)" v-model="form.topicCodes" />
+                                        <span>{{ t.value }}</span>
+                                    </label>
+                                </div>
+
+                                <small v-if="topicError" class="error-text">Please select at least one topic.</small>
+                                <small class="hint" v-else-if="(form.topicCodes || []).length">
+                                    Selected: {{ (form.topicCodes || []).length }}
+                                </small>
                             </div>
                         </div>
 
                         <div class="form-column">
                             <div class="form-group">
                                 <label>Course Title *</label>
-                                <select v-model="form.courseTitle" required>
+                                <select v-model="form.courseTitle" :disabled="!(form.topicCodes || []).length" required>
                                     <option value="">-- Select --</option>
-                                    <option v-for="subject in filteredSubjects"
+                                    <option v-for="subject in (filteredSubjects || [])"
                                             :key="subject.subjectSysId"
                                             :value="String(subject.subjectSysId)">
                                         {{ subject.courseTitle }}
@@ -151,7 +155,7 @@
                                 <label>Format *</label>
                                 <select v-model="form.format" required>
                                     <option value="">-- Select --</option>
-                                    <option v-for="format in lookupData.formats.$values"
+                                    <option v-for="format in lookupData.formats"
                                             :key="format.code"
                                             :value="String(format.code)">
                                         {{ format.value }}
@@ -266,344 +270,379 @@
         </div>
     </div>
 </template>
+<script>import apiClient from "@/axios.js";
 
-<script>import apiClient from '@/axios.js';
+export default {
+  props: ["course"],
+  data() {
+    return {
+      originalCourse: null,
+      topicError: false,
+      form: {
+        trainingCenter: "",
+        region: "",
+        topicCodes: [],
+        courseTitle: "",
+        instructor1: "",
+        instructor2: "",
+        startDate: "",
+        endDate: "",
+        startTime: "",
+        endTime: "",
+        regDeadline: "",
+        maxSeats: "",
+        trainingLocation: "",
+        virtualUrl: "",
+        deliverables: "",
+        format: "",
+        fundingType: "",
+        hideCourse: false,
+        courseSchedule: "",
+        markAsNewUntil: "",
+        baseHours: "",
+        isMultiSession: false,
+        sessions: []
+      },
+      lookupData: {
+        trainingCenters: [],
+        regions: [],
+        topics: [],
+        instructors: [],
+        deliverables: [],
+        formats: []
+      },
+      filteredSubjects: []
+    };
+  },
 
-    export default {
-        props: ['course'],
-        data() {
-            return {
-                originalCourse: null,
-                form: {
-                    trainingCenter: '',
-                    region: '',
-                    category: '',
-                    courseTitle: '',
-                    instructor1: '',
-                    instructor2: '',
-                    startDate: '',
-                    endDate: '',
-                    startTime: '',
-                    endTime: '',
-                    regDeadline: '',
-                    maxSeats: '',
-                    trainingLocation: '',
-                    virtualUrl: '',
-                    deliverables: '',
-                    format: '',
-                    fundingType: '',
-                    hideCourse: false,
-                    courseSchedule: '',
-                    markAsNewUntil: '', 
-                    baseHours: '',
-                    isMultiSession: false,
-                    sessions: [
-                        {
-                            date: '',
-                            startTime: '',
-                            endTime: '',
-                            url: '',
-                            trainingLocation: ''
-                        }
-                    ]
-                },
-                lookupData: {
-                    trainingCenters: [],
-                    regions: [],
-                    categories: [],
-                    subjects: [],
-                    instructors: [],
-                    deliverables: [],
-                    formats: []
-                },
-                filteredSubjects: []
-            };
-        },
-        computed: {
-            // same logic as Schedule modal
-            calculatedBaseHours() {
-                // MULTI-SESSION: sum each session
-                if (this.form.isMultiSession && this.form.sessions.length > 0) {
-                    let total = 0;
-                    this.form.sessions.forEach((s) => {
-                        if (s.date && s.startTime && s.endTime) {
-                            const start = new Date(`${s.date}T${s.startTime}:00`);
-                            const end = new Date(`${s.date}T${s.endTime}:00`);
-                            const diff = (end - start) / (1000 * 60 * 60);
-                            if (diff > 0) total += diff;
-                        }
-                    });
-                    return Number.isNaN(total) ? 0 : Number(total.toFixed(2));
-                }
+  computed: {
+    calculatedBaseHours() {
+      // MULTI-SESSION: sum each session
+      if (this.form.isMultiSession && (this.form.sessions || []).length > 0) {
+        let total = 0;
+        (this.form.sessions || []).forEach((s) => {
+          if (s.date && s.startTime && s.endTime) {
+            const start = new Date(`${s.date}T${s.startTime}:00`);
+            const end = new Date(`${s.date}T${s.endTime}:00`);
+            const diff = (end - start) / (1000 * 60 * 60);
+            if (diff > 0) total += diff;
+          }
+        });
+        return Number.isNaN(total) ? 0 : Number(total.toFixed(2));
+      }
 
-                // SINGLE-BLOCK MODE: just time diff
-                if (!this.form.startTime || !this.form.endTime) return 0;
+      // SINGLE-BLOCK MODE
+      if (!this.form.startTime || !this.form.endTime) return 0;
 
-                const start = new Date(`2000-01-01T${this.form.startTime}:00`);
-                const end = new Date(`2000-01-01T${this.form.endTime}:00`);
-                let diff = (end - start) / (1000 * 60 * 60);
-                if (diff < 0) diff = 0;
-                return Number(diff.toFixed(2));
-            }
-        },
-        watch: {
-            'form.category'(newCategory) {
-                if (newCategory) {
-                    this.fetchSubjectsByCategory(newCategory);
-                } else {
-                    this.filteredSubjects = [];
-                }
-            },
-            'form.isMultiSession'(val) {
-                if (val && this.form.sessions.length === 0) {
-                    this.addSession();
-                }
-                if (!val) {
-                    // when disabling multi-session, keep at least one empty session
-                    this.form.sessions = [
-                        {
-                            date: '',
-                            startTime: '',
-                            endTime: '',
-                            url: '',
-                            trainingLocation: ''
-                        }
-                    ];
-                }
-            }
-        },
-        async mounted() {
-            await this.fetchLookupData();
-            const courseId = this.course.courseSysId;
-            try {
-                const res = await apiClient.get(`/CourseAdmin/courseWithSessions/${courseId}`);
-                const courseWithSessions = res.data;
-                this.originalCourse = courseWithSessions;
-                this.populateForm(courseWithSessions);
-            } catch (err) {
-                console.error('❌ Failed to load full course details', err);
-                alert('Failed to load course details.');
-            }
-        },
-        methods: {
-            addSession() {
-                if (this.form.sessions.length < 4) {
-                    this.form.sessions.push({
-                        date: '',
-                        startTime: '',
-                        endTime: '',
-                        url: '',
-                        trainingLocation: ''
-                    });
-                }
-            },
-            removeSession(index) {
-                if (this.form.sessions.length > 1) {
-                    this.form.sessions.splice(index, 1);
-                }
-            },
-            calculateBaseHours() {
-                if (!this.form.startDate || !this.form.endDate || !this.form.startTime || !this.form.endTime)
-                    return;
+      const start = new Date(`2000-01-01T${this.form.startTime}:00`);
+      const end = new Date(`2000-01-01T${this.form.endTime}:00`);
+      let diff = (end - start) / (1000 * 60 * 60);
+      if (diff < 0) diff = 0;
+      return Number(diff.toFixed(2));
+    }
+  },
 
-                const start = new Date(`${this.form.startDate}T${this.form.startTime}:00`);
-                const end = new Date(`${this.form.endDate}T${this.form.endTime}:00`);
+  watch: {
+    "form.topicCodes": {
+      deep: true,
+      handler(newTopics) {
+        if (Array.isArray(newTopics) && newTopics.length) {
+          this.fetchSubjectsByTopics(newTopics);
+        } else {
+          this.filteredSubjects = [];
+          this.form.courseTitle = "";
+        }
+      }
+    },
+    "form.courseTitle": {
+    immediate: false,
+    async handler(newVal) {
+      if (!newVal) return;
+      if (this.loadingTopics) return;
 
-                let diffMs = end - start;
+      await this.loadTopicsForSubject(Number(newVal));
+    }
+  },
 
-                if (diffMs <= 0) {
-                    this.form.baseHours = 0;
-                    return;
-                }
+    "form.isMultiSession"(val) {
+      if (val && (this.form.sessions || []).length === 0) {
+        this.addSession();
+      }
+      if (!val) {
+        this.form.sessions = [
+          { date: "", startTime: "", endTime: "", url: "", trainingLocation: "" }
+        ];
+      }
+    }
+  },
 
-                const hours = diffMs / (1000 * 60 * 60);
-                this.form.baseHours = parseFloat(hours.toFixed(2));
-            },
-            calculateSessionHours() {
-                if (!this.form.isMultiSession) return this.form.baseHours;
+  async mounted() {
+    await this.fetchLookupData();
 
-                let total = 0;
+    const courseId = this.course.courseSysId;
+    try {
+      const res = await apiClient.get(`/CourseAdmin/courseWithSessions/${courseId}`);
+      const courseWithSessions = res.data;
+      this.originalCourse = courseWithSessions;
+      await this.populateForm(courseWithSessions);
+    } catch (err) {
+      console.error("❌ Failed to load full course details", err);
+      alert("Failed to load course details.");
+    }
+  },
 
-                this.form.sessions.forEach(s => {
-                    if (s.date && s.startTime && s.endTime) {
-                        const start = new Date(`${s.date}T${s.startTime}:00`);
-                        const end = new Date(`${s.date}T${s.endTime}:00`);
-                        const diff = (end - start) / (1000 * 60 * 60);
-                        if (diff > 0) total += diff;
-                    }
-                });
+  methods: {
+    addSession() {
+      this.form.sessions = this.form.sessions || [];
+      if (this.form.sessions.length < 4) {
+        this.form.sessions.push({
+          date: "",
+          startTime: "",
+          endTime: "",
+          url: "",
+          trainingLocation: ""
+        });
+      }
+    },
+    async loadTopicsForSubject(subjectSysId) {
+  try {
+    this.loadingTopics = true;
 
-                this.form.baseHours = parseFloat(total.toFixed(2));
-            },
-            async fetchSubjectsByCategory(categoryCode) {
-                try {
-                    const res = await apiClient.get(`/CreateCourse/subjectsByCategory/${categoryCode}`);
-                    this.filteredSubjects = res.data?.$values || res.data || [];
-                } catch (err) {
-                    console.error('Failed to load subjects by category:', err);
-                    this.filteredSubjects = [];
-                }
-            },
-            async fetchLookupData() {
-                try {
-                    const res = await apiClient.get('/CreateCourse/lookup');
-                    this.lookupData = {
-                        trainingCenters: res.data.trainingCenters || [],
-                        regions: res.data.regions || [],
-                        categories: res.data.categories || [],
-                        subjects: res.data.subjects?.$values || res.data.subjects || [],
-                        instructors: res.data.instructors || [],
-                        deliverables: res.data.deliverables || [],
-                        formats: res.data.formats || []
-                    };
-                } catch (err) {
-                    console.error('❌ Failed to fetch lookup data', err);
-                }
-            },
-            async populateForm(course) {
-                const c = course;
+    const tRes = await apiClient.get(`/CreateCourse/topicsBySubject/${subjectSysId}`);
+    const codes = tRes.data?.$values || tRes.data || [];
 
-                const subject = this.lookupData.subjects.find(
-                    (s) => s.subjectSysId === c.subjectSysId
-                );
-                const derivedCategory = subject ? String(subject.category) : '';
+    // checkbox values are strings -> keep strings
+    this.form.topicCodes = (codes || []).map(x => String(x));
 
-                this.form.trainingCenter = String(c.siteSysId);
-                this.form.region = c.region ? String(c.region) : '';
-                this.form.category = derivedCategory;
-                await this.fetchSubjectsByCategory(derivedCategory);
+    // refresh title list based on these topics
+    if ((this.form.topicCodes || []).length) {
+      await this.fetchSubjectsByTopics(this.form.topicCodes);
+    }
+  } catch (e) {
+    console.error("Failed to load topics for subject", e);
+    this.form.topicCodes = [];
+  } finally {
+    this.loadingTopics = false;
+  }
+},
+    removeSession(index) {
+      if ((this.form.sessions || []).length > 1) {
+        this.form.sessions.splice(index, 1);
+      }
+    },
 
-                this.form.courseTitle = c.subjectSysId ? String(c.subjectSysId) : '';
-                this.form.instructor1 = c.instructor1 ? String(c.instructor1) : '';
-                this.form.instructor2 = c.instructor2 ? String(c.instructor2) : '';
-                this.form.startDate = c.courseDate?.split('T')[0] || '';
-                this.form.endDate = c.endDate?.split('T')[0] || '';
-                this.form.startTime = c.courseTimeBegin?.substring(11, 16) || '';
-                this.form.endTime = c.courseTimeEnd?.substring(11, 16) || '';
-                this.form.regDeadline = c.regDeadLine?.split('T')[0] || '';
-                this.form.maxSeats = c.maxSeats;
-                this.form.trainingLocation = c.trainingLocation || '';
-                this.form.virtualUrl = c.virtualUrl || '';
-                this.form.deliverables = c.deliverable ? String(c.deliverable) : '';
-                this.form.format = c.format ? String(c.format) : '';
-                this.form.fundingType = c.rtc ? 'RTC' : c.coe ? 'COE' : 'Others';
-                this.form.hideCourse = c.hidden;
-                this.form.courseSchedule = c.information;
-                this.form.isMultiSession = c.isMultiSession || false;
-                this.form.baseHours = c.baseHours || c.BaseHours || 0;
-                this.form.markAsNewUntil =
-                    c.markAsNewUntil?.split('T')[0] ||
-                    c.markNewUntil?.split('T')[0] ||
-                    c.newUntil?.split('T')[0] ||
-                    c.MarkAsNewUntil?.split('T')[0] ||
-                    '';
+    async fetchLookupData() {
+      try {
+        const res = await apiClient.get("/CreateCourse/lookup");
 
-                const rawSessions = c.sessions?.$values || [];
+        this.lookupData = {
+          trainingCenters:
+            res.data.trainingCenters?.$values ||
+            res.data.TrainingCenters?.$values ||
+            res.data.TrainingCenters ||
+            [],
+          regions:
+            res.data.regions?.$values ||
+            res.data.Regions?.$values ||
+            res.data.Regions ||
+            [],
+          topics:
+            res.data.topics?.$values ||
+            res.data.Topics?.$values ||
+            res.data.Topics ||
+            [],
+          instructors:
+            res.data.instructors?.$values ||
+            res.data.Instructors?.$values ||
+            res.data.Instructors ||
+            [],
+          deliverables:
+            res.data.deliverables?.$values ||
+            res.data.Deliverables?.$values ||
+            res.data.Deliverables ||
+            [],
+          formats:
+            res.data.formats?.$values ||
+            res.data.Formats?.$values ||
+            res.data.Formats ||
+            []
+        };
+      } catch (err) {
+        console.error("❌ Failed to fetch lookup data", err);
+      }
+    },
 
-                this.form.sessions = rawSessions.length
-                    ? rawSessions.map((s) => ({
-                        date: s.sessionDate?.split('T')[0] || '',
-                        startTime: s.startTime?.substring(0, 5) || '',
-                        endTime: s.endTime?.substring(0, 5) || '',
-                        url: s.sessionUrl || '',
-                        trainingLocation: s.trainingLocation ?? ''
-                    }))
-                    : [
-                        {
-                            date: '',
-                            startTime: '',
-                            endTime: '',
-                            url: '',
-                            trainingLocation: ''
-                        }
-                    ];
-            },
-            async submitUpdate() {
-                try {
-                    const n = (v) =>
-                        v === '' || v === null || v === undefined ? null : Number(v);
+    async fetchSubjectsByTopics(topicCodes) {
+      try {
+        const payload = {
+          topicCodes: (topicCodes || []).map(Number).filter((n) => !Number.isNaN(n))
+        };
 
-                    const coursePayload = {
-                        courseSysId: this.originalCourse.courseSysId,
-                        siteSysId: n(this.form.trainingCenter),
-                        region: n(this.form.region),
-                        subjectSysId: n(this.form.courseTitle),
-                        instructor1: n(this.form.instructor1),
-                        instructor2: n(this.form.instructor2),
+        const res = await apiClient.post("/CreateCourse/subjectsByTopics", payload);
+        this.filteredSubjects = res.data?.$values || res.data || [];
 
-                        courseDate: this.form.startDate
-                            ? new Date(this.form.startDate).toISOString()
-                            : null,
-                        endDate: this.form.endDate
-                            ? new Date(this.form.endDate).toISOString()
-                            : null,
+        const stillValid = (this.filteredSubjects || []).some(
+          (x) => String(x.subjectSysId) === String(this.form.courseTitle)
+        );
+        if (!stillValid) this.form.courseTitle = "";
+      } catch (err) {
+        console.error("Failed to load subjects by topics", err);
+        this.filteredSubjects = [];
+        this.form.courseTitle = "";
+      }
+    },
 
-                        courseTimeBegin: this.form.startTime
-                            ? new Date(
-                                `${this.form.startDate}T${this.form.startTime}:00`
-                            ).toISOString()
-                            : null,
-                        courseTimeEnd: this.form.endTime
-                            ? new Date(
-                                `${this.form.endDate}T${this.form.endTime}:00`
-                            ).toISOString()
-                            : null,
+    async populateForm(c) {
+      // basic fields
+      this.form.trainingCenter = String(c.siteSysId ?? "");
+      this.form.region = c.region != null ? String(c.region) : "";
+      this.form.courseTitle = c.subjectSysId != null ? String(c.subjectSysId) : "";
 
-                        regDeadLine: this.form.regDeadline
-                            ? new Date(this.form.regDeadline).toISOString()
-                            : null,
+      this.form.instructor1 = c.instructor1 != null ? String(c.instructor1) : "";
+      this.form.instructor2 = c.instructor2 != null ? String(c.instructor2) : "";
 
-                        markAsNewUntil: this.form.markAsNewUntil
-                            ? new Date(this.form.markAsNewUntil).toISOString()
-                            : null,
+      this.form.startDate = c.courseDate?.split("T")[0] || "";
+      this.form.endDate = c.endDate?.split("T")[0] || "";
+      this.form.startTime = c.courseTimeBegin?.substring(11, 16) || "";
+      this.form.endTime = c.courseTimeEnd?.substring(11, 16) || "";
 
-                        maxSeats: n(this.form.maxSeats),
-                        trainingLocation: this.form.trainingLocation || null,
-                        virtualUrl: this.form.virtualUrl || null,
-                        deliverable: n(this.form.deliverables),
-                        format: n(this.form.format),
+      this.form.regDeadline = c.regDeadLine?.split("T")[0] || "";
+      this.form.maxSeats = c.maxSeats ?? "";
 
-                        rtc: this.form.fundingType === 'RTC',
-                        coe: this.form.fundingType === 'COE',
-                        otherFund: this.form.fundingType === 'Others',
-                        hidden: !!this.form.hideCourse,
+      this.form.trainingLocation = c.trainingLocation || "";
+      this.form.virtualUrl = c.virtualUrl || "";
+      this.form.deliverables = c.deliverable != null ? String(c.deliverable) : "";
+      this.form.format = c.format != null ? String(c.format) : "";
 
-                        information: this.form.courseSchedule || null,
-                        isMultiSession: !!this.form.isMultiSession,
-                        baseHours: this.calculatedBaseHours,
-                        dateModified: new Date().toISOString()
-                    };
+      this.form.fundingType = c.rtc ? "RTC" : c.coe ? "COE" : "Others";
+      this.form.hideCourse = !!c.hidden;
+      this.form.courseSchedule = c.information || "";
 
-                    const sessions = this.form.isMultiSession
-                        ? this.form.sessions
-                            .filter((s) => s.date && s.startTime && s.endTime)
-                            .map((s) => ({
-                                sessionDate: new Date(s.date).toISOString(),
-                                startTime: s.startTime,
-                                endTime: s.endTime,
-                                sessionUrl: s.url ?? '',
-                                trainingLocation: s.trainingLocation ?? ''
-                            }))
-                        : [];
+      this.form.isMultiSession = !!c.isMultiSession;
+      this.form.baseHours = c.baseHours || c.BaseHours || 0;
 
-                    const requestPayload = { course: coursePayload, sessions };
+      this.form.markAsNewUntil =
+        c.markAsNewUntil?.split("T")[0] ||
+        c.MarkAsNewUntil?.split("T")[0] ||
+        "";
 
-                    const courseSysId = this.originalCourse.courseSysId;
-                    await apiClient.put(`/CourseAdmin/update/${courseSysId}`, requestPayload, {
-                        headers: { 'Content-Type': 'application/json' }
-                    });
+      // sessions
+      const rawSessions = c.sessions?.$values || c.sessions || [];
+      this.form.sessions = rawSessions.length
+        ? rawSessions.map((s) => ({
+            date: s.sessionDate?.split("T")[0] || "",
+            startTime: s.startTime?.substring(0, 5) || "",
+            endTime: s.endTime?.substring(0, 5) || "",
+            url: s.sessionUrl || "",
+            trainingLocation: s.trainingLocation ?? ""
+          }))
+        : [{ date: "", startTime: "", endTime: "", url: "", trainingLocation: "" }];
 
-                    alert('Course updated successfully!');
-                    this.$emit('updated');
-                    this.$emit('close');
-                } catch (err) {
-                    console.error('Error updating course:', err?.response?.data || err);
-                    alert('Failed to update course.');
-                }
-            }
-        },
-        
-    };</script>
+      // ✅ load topics for this subject from backend (recommended)
+      if (c.subjectSysId) {
+        try {
+          const tRes = await apiClient.get(`/CreateCourse/topicsBySubject/${c.subjectSysId}`);
+          const codes = tRes.data?.$values || tRes.data || [];
+          this.form.topicCodes = (codes || []).map((x) => String(x));
+
+          if ((this.form.topicCodes || []).length) {
+            await this.fetchSubjectsByTopics(this.form.topicCodes);
+          }
+        } catch (e) {
+          console.error("Failed to load topics for subject", e);
+          this.form.topicCodes = [];
+        }
+      }
+    },
+
+    async submitUpdate() {
+      const topicCodes = (this.form.topicCodes || [])
+        .map(Number)
+        .filter((n) => !Number.isNaN(n));
+
+      if (topicCodes.length === 0) {
+        this.topicError = true;
+        alert("Please select at least one topic.");
+        return;
+      }
+      this.topicError = false;
+
+      try {
+        const n = (v) => (v === "" || v === null || v === undefined ? null : Number(v));
+
+        const coursePayload = {
+          courseSysId: this.originalCourse.courseSysId,
+          siteSysId: n(this.form.trainingCenter),
+          region: n(this.form.region),
+          subjectSysId: n(this.form.courseTitle),
+          instructor1: n(this.form.instructor1),
+          instructor2: n(this.form.instructor2),
+
+          courseDate: this.form.startDate ? new Date(this.form.startDate).toISOString() : null,
+          endDate: this.form.endDate ? new Date(this.form.endDate).toISOString() : null,
+
+          courseTimeBegin: this.form.startTime
+            ? new Date(`${this.form.startDate}T${this.form.startTime}:00`).toISOString()
+            : null,
+          courseTimeEnd: this.form.endTime
+            ? new Date(`${this.form.endDate}T${this.form.endTime}:00`).toISOString()
+            : null,
+
+          regDeadLine: this.form.regDeadline ? new Date(this.form.regDeadline).toISOString() : null,
+
+          markAsNewUntil: this.form.markAsNewUntil
+            ? new Date(this.form.markAsNewUntil).toISOString()
+            : null,
+
+          maxSeats: n(this.form.maxSeats),
+          trainingLocation: this.form.trainingLocation || null,
+          virtualUrl: this.form.virtualUrl || null,
+          deliverable: n(this.form.deliverables),
+          format: n(this.form.format),
+
+          rtc: this.form.fundingType === "RTC",
+          coe: this.form.fundingType === "COE",
+          otherFund: this.form.fundingType === "Others",
+          hidden: !!this.form.hideCourse,
+
+          information: this.form.courseSchedule || null,
+          isMultiSession: !!this.form.isMultiSession,
+          baseHours: this.calculatedBaseHours,
+          dateModified: new Date().toISOString()
+        };
+
+        const sessions = this.form.isMultiSession
+          ? (this.form.sessions || [])
+              .filter((s) => s.date && s.startTime && s.endTime)
+              .map((s) => ({
+                sessionDate: new Date(s.date).toISOString(),
+                startTime: s.startTime,
+                endTime: s.endTime,
+                sessionUrl: s.url ?? "",
+                trainingLocation: s.trainingLocation ?? ""
+              }))
+          : [];
+
+const requestPayload = { 
+  course: coursePayload, 
+  sessions,
+  topicCodes // ✅ send to backend
+};
+        const courseSysId = this.originalCourse.courseSysId;
+        await apiClient.put(`/CourseAdmin/update/${courseSysId}`, requestPayload, {
+          headers: { "Content-Type": "application/json" }
+        });
+
+        alert("Course updated successfully!");
+        this.$emit("updated");
+        this.$emit("close");
+      } catch (err) {
+        console.error("Error updating course:", err?.response?.data || err);
+        alert("Failed to update course.");
+      }
+    }
+  }
+};</script>
 
 <style scoped>
     /* Overlay */
@@ -919,5 +958,47 @@
         .btn-secondary {
             width: 100%;
         }
+    }
+    .topic-multi {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 8px;
+    }
+
+    .topic-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 10px;
+        background: #f9fafb;
+        cursor: pointer;
+    }
+
+        .topic-item input {
+            width: 16px;
+            height: 16px;
+        }
+
+    .required-border {
+        border: 1px solid #ef4444 !important;
+        border-radius: 10px;
+        padding: 10px;
+    }
+
+    .error-text {
+        display: block;
+        margin-top: 8px;
+        color: #ef4444;
+        font-size: 12px;
+    }
+
+    .hint {
+        display: block;
+        margin-top: 8px;
+        opacity: 0.8;
+        font-size: 12px;
     }
 </style>
