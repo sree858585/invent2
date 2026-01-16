@@ -43,21 +43,32 @@
                                   class="quill-box" />
                 </section>
 
-                <!-- CATEGORY / CREDITS -->
+                <!-- TOPICS / CREDITS -->
                 <section class="section-card">
                     <div class="section-header">
-                        <h3>Category & Credits</h3>
-                        <p>Manage title category and related credit types.</p>
+                        <h3>Topic & Credits</h3>
+                        <p>Manage title topics and related credit types.</p>
                     </div>
 
                     <div class="form-group">
-                        <label>Category</label>
-                        <select v-model="form.category">
-                            <option value="">-- Select --</option>
-                            <option v-for="cat in categories" :key="cat.code" :value="cat.code">
-                                {{ cat.value }}
-                            </option>
-                        </select>
+                        <label>
+                            Topics <span class="required">*</span>
+                        </label>
+
+                        <div class="topic-multi" :class="{ 'required-border': topicError }">
+                            <label v-for="t in topics" :key="t.code" class="topic-item">
+                                <input type="checkbox" :value="t.code" v-model="form.topicCodes" />
+                                <span>{{ t.value }}</span>
+                            </label>
+                        </div>
+
+                        <small v-if="topicError" class="error-text">
+                            Please select at least one topic.
+                        </small>
+
+                        <small class="hint" v-else-if="form.topicCodes.length">
+                            Selected: {{ form.topicCodes.length }}
+                        </small>
                     </div>
 
                     <div class="checkbox-row">
@@ -146,7 +157,9 @@
                     subjectSysId: null,
                     courseTitle: '',
                     description: '',
-                    category: '',
+                            topicCodes: [], // ✅ NEW
+
+                   // category: '',
                     cnecredits: false,
                     oasascredits: false,
                     certDescription: '',
@@ -155,21 +168,33 @@
                     isOnlineTraining: 'false',
                     markAsNewUntil: null
                 },
-                categories: []
+                topics: [],
+      topicError: false,
             };
         },
         async mounted() {
-            const res = await apiClient.get('/Lookup/categories');
-            this.categories = res.data?.$values || [];
+            const res = await apiClient.get("/Lookup/topics");
+    this.topics = Array.isArray(res.data) ? res.data : (res.data?.$values || []);
 
-            const t = await apiClient.get(`/TrainingTitle/${this.title.subjectSysId}`);
-            const data = t.data;
+    const t = await apiClient.get(`/TrainingTitle/${this.title.subjectSysId}`);
+    const data = t.data;
+
+    const normalizeArray = (v) => {
+  if (Array.isArray(v)) return v;
+  if (v && Array.isArray(v.$values)) return v.$values;
+  return [];
+};
+
+    const topicCodesFromApi =
+  normalizeArray(data.topicCodes).length
+    ? normalizeArray(data.topicCodes)
+    : normalizeArray(data.topics).map(x => x.code);
 
             this.form = {
                 subjectSysId: data.subjectSysId,
                 courseTitle: data.courseTitle ?? '',
                 description: data.description ?? '',
-                category: data.category ?? '',
+  topicCodes: topicCodesFromApi.map(Number).filter(n => !Number.isNaN(n)),
                 cnecredits: data.cnecredits ?? false,
                 oasascredits: data.oasascredits ?? false,
                 certDescription: data.certDescription ?? '',
@@ -183,29 +208,51 @@
         },
         methods: {
             async updateTitle() {
-                try {
-                    if (this.form.isOnlineTraining === 'true' && !this.form.videoUrl.trim()) {
-                        alert('Please provide a WebCast or Online Training URL.');
-                        return;
-                    }
-
-                    const payload = {
-                        ...this.form,
-                        isOnlineTraining: this.form.isOnlineTraining === 'true',
-                        markAsNewUntil: this.form.markAsNewUntil
-
-                    };
-
-                    await apiClient.put(`/TrainingTitle/update/${this.form.subjectSysId}`, payload);
-                    alert('Training title updated successfully!');
-                    this.$emit('updated');
-                    this.$emit('close');
-                } catch (err) {
-                    console.error('Error updating title', err);
-                    alert('Failed to update training title.');
-                }
-            }
+      try {
+        // ✅ TOPIC REQUIRED
+        const topicCodes = (this.form.topicCodes || []).map(Number).filter(n => !Number.isNaN(n));
+        if (topicCodes.length === 0) {
+          this.topicError = true;
+          alert("Please select at least one topic.");
+          return;
         }
+        this.topicError = false;
+
+        // ✅ Online URL required if online
+        if (this.form.isOnlineTraining === "true" && !this.form.videoUrl?.trim()) {
+          alert("Please provide a WebCast or Online Training URL.");
+          return;
+        }
+
+        const payload = {
+          subjectSysId: this.form.subjectSysId,
+          courseTitle: this.form.courseTitle,
+          description: this.form.description || null,
+
+          // ✅ send topics to backend
+          topicCodes,
+
+          cnecredits: this.form.cnecredits,
+          oasascredits: this.form.oasascredits,
+          certDescription: this.form.certDescription || null,
+          miscCertDesc: this.form.miscCertDesc || null,
+
+          videoUrl: this.form.videoUrl || null,
+          isOnlineTraining: this.form.isOnlineTraining === "true",
+          markAsNewUntil: this.form.markAsNewUntil || null,
+        };
+
+        await apiClient.put(`/TrainingTitle/update/${this.form.subjectSysId}`, payload);
+
+        alert("Training title updated successfully!");
+        this.$emit("updated");
+        this.$emit("close");
+      } catch (err) {
+        console.error("Error updating title", err?.response?.data || err);
+        alert(err?.response?.data?.message || "Failed to update training title.");
+      }
+            },
+        },
     };</script>
 
 <style scoped>
@@ -441,4 +488,51 @@
             color: #43285D;
             font-weight: 600;
         }
+    .topic-multi {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 8px;
+    }
+
+    .topic-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 10px;
+        background: #f9fafb;
+        cursor: pointer;
+    }
+
+        .topic-item input {
+            width: 16px;
+            height: 16px;
+        }
+
+    .hint {
+        display: block;
+        margin-top: 8px;
+        opacity: 0.8;
+        font-size: 12px;
+    }
+
+    .required {
+        color: #ef4444;
+        margin-left: 4px;
+    }
+
+    .required-border {
+        border: 1px solid #ef4444 !important;
+        border-radius: 10px;
+        padding: 10px;
+    }
+
+    .error-text {
+        display: block;
+        margin-top: 8px;
+        color: #ef4444;
+        font-size: 12px;
+    }
 </style>
