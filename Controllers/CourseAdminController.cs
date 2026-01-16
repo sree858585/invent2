@@ -271,7 +271,7 @@ namespace HIVTraining_Vue.Server.Controllers
 
             var updated = request.Course;
 
-            // Update main course fields
+            // ✅ Update main course fields
             existingCourse.SiteSysId = updated.SiteSysId;
             existingCourse.SubjectSysId = updated.SubjectSysId;
             existingCourse.Region = updated.Region;
@@ -284,7 +284,7 @@ namespace HIVTraining_Vue.Server.Controllers
             existingCourse.RegDeadLine = updated.RegDeadLine;
             existingCourse.MaxSeats = updated.MaxSeats;
             existingCourse.TrainingLocation = updated.TrainingLocation;
-            existingCourse.VirtualUrl = updated.VirtualUrl;   // <-- ADD THIS
+            existingCourse.VirtualUrl = updated.VirtualUrl;
             existingCourse.Deliverable = updated.Deliverable;
             existingCourse.Format = updated.Format;
             existingCourse.Rtc = updated.Rtc;
@@ -298,14 +298,14 @@ namespace HIVTraining_Vue.Server.Controllers
 
             existingCourse.DateModified = DateTime.UtcNow;
 
-            // Clear existing sessions
+            // ✅ Clear existing sessions
             var existingSessions = await _context.CourseSessions
                 .Where(s => s.CourseSysId == id)
                 .ToListAsync();
 
             _context.CourseSessions.RemoveRange(existingSessions);
 
-            // Add new sessions if applicable
+            // ✅ Add new sessions if applicable
             if (updated.IsMultiSession && request.Sessions != null && request.Sessions.Any())
             {
                 var newSessions = request.Sessions.Select(s => new CourseSession
@@ -321,9 +321,39 @@ namespace HIVTraining_Vue.Server.Controllers
                 _context.CourseSessions.AddRange(newSessions);
             }
 
+            // ✅ SAVE course + sessions first
             await _context.SaveChangesAsync();
 
-            //  Handle waitlisted users if seats are available
+            // ✅ NOW update SubjectTopics (THIS is what you were missing)
+            // IMPORTANT: This updates the Title (SubjectSysId) topics.
+            // If multiple courses share same SubjectSysId, all will reflect same topics.
+            if (updated.SubjectSysId > 0 && request.TopicCodes != null)
+            {
+                var subjectId = updated.SubjectSysId;
+
+                var topicCodes = request.TopicCodes
+                    .Distinct()
+                    .ToList();
+
+                var existingMappings = await _context.SubjectTopics
+                    .Where(x => x.SubjectSysId == subjectId)
+                    .ToListAsync();
+
+                _context.SubjectTopics.RemoveRange(existingMappings);
+
+                foreach (var code in topicCodes)
+                {
+                    _context.SubjectTopics.Add(new SubjectTopic
+                    {
+                        SubjectSysId = subjectId,
+                        TopicCode = code
+                    });
+                }
+
+                await _context.SaveChangesAsync();
+            }
+
+            // ✅ Handle waitlisted users if seats are available
             if (existingCourse.MaxSeats.HasValue && existingCourse.MaxSeats.Value > 0)
             {
                 var registered = await _context.UserCourses.CountAsync(uc =>
