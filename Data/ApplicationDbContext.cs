@@ -158,6 +158,10 @@ namespace HIVTraining_Vue.Data
 
         public DbSet<CustomCalendarEvent> CustomCalendarEvents { get; set; }
 
+        public DbSet<LkTopic> LkTopics { get; set; }
+
+        public DbSet<SubjectTopic> SubjectTopics { get; set; }
+
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -200,6 +204,30 @@ namespace HIVTraining_Vue.Data
             {
                 e.HasKey(x => x.PronounId);
                 e.Property(x => x.Value).IsRequired().HasMaxLength(100);
+            });
+
+            modelBuilder.Entity<LkTopic>(entity =>
+            {
+                entity.HasKey(e => e.Code);
+                entity.ToTable("LkTopics"); // table name 
+                entity.Property(e => e.Value).IsRequired().HasMaxLength(200);
+            });
+
+            modelBuilder.Entity<SubjectTopic>(entity =>
+            {
+                entity.ToTable("SubjectTopics"); // choose table name
+                entity.HasKey(x => new { x.SubjectSysId, x.TopicCode });
+
+                entity.HasOne(x => x.Subject)
+                    .WithMany()                 // (no navigation needed in Subject)
+                    .HasForeignKey(x => x.SubjectSysId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(x => x.Topic)
+                    .WithMany()
+                    .HasForeignKey(x => x.TopicCode)
+                    .HasPrincipalKey(t => t.Code)
+                    .OnDelete(DeleteBehavior.Restrict);
             });
 
             // WorkLocations
