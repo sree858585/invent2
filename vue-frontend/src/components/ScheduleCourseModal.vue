@@ -517,7 +517,7 @@
             },
             async fetchSubjectsByCategory(categoryCode) {
                 try {
-                    const res = await apiClient.get(`/CreateCourse/subjectsByCategory/${categoryCode}`);
+                    const res = await apiClient.get(`/CreateCourse/subjectsByTopic/${categoryCode}`);
                     this.filteredSubjects = res.data?.$values || [];
                 } catch (err) {
                     console.error("Failed to load subjects by category", err);

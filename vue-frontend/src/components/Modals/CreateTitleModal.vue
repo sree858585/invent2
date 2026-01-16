@@ -1,7 +1,6 @@
 ﻿<template>
     <div class="modal-overlay">
         <div class="modal fade-in">
-
             <!-- Close -->
             <button class="close-btn" @click="$emit('close')" aria-label="Close">&times;</button>
 
@@ -17,7 +16,6 @@
             </header>
 
             <form @submit.prevent="submitTitle">
-
                 <!-- BASIC INFORMATION -->
                 <section class="section-card">
                     <div class="section-header">
@@ -27,7 +25,7 @@
 
                     <div class="form-group">
                         <label>Course Title <span class="required">*</span></label>
-                        <input v-model="form.courseTitle" placeholder="Enter course title" required />
+                        <input v-model.trim="form.courseTitle" placeholder="Enter course title" required />
                     </div>
                 </section>
 
@@ -47,18 +45,36 @@
                 <!-- CATEGORY & CREDITS -->
                 <section class="section-card">
                     <div class="section-header">
-                        <h3>Category & Credits</h3>
+                        <h3>Topic & Credits</h3>
                         <p>Choose category and credit types applicable.</p>
                     </div>
 
                     <div class="form-group">
-                        <label>Category</label>
-                        <select v-model="form.category">
-                            <option value="">-- Select Category --</option>
-                            <option v-for="cat in categories" :key="cat.code" :value="cat.code">
-                                {{ cat.value }}
-                            </option>
-                        </select>
+                        <!--<label>Category</label>
+    <select v-model="form.category">
+        <option value="">-- Select Category --</option>
+        <option v-for="cat in categories" :key="cat.code" :value="String(cat.code)">
+            {{ cat.value }}
+        </option>
+    </select>-->
+                        <label>
+                            Topics <span class="required">*</span>
+                        </label>
+
+                        <div class="topic-multi" :class="{ 'required-border': topicError }">
+                            <label v-for="t in topics" :key="t.code" class="topic-item">
+                                <input type="checkbox" :value="t.code" v-model="form.topicCodes" />
+                                <span>{{ t.value }}</span>
+                            </label>
+                        </div>
+
+                        <small v-if="topicError" class="error-text">
+                            Please select at least one topic.
+                        </small>
+
+                        <small class="hint" v-else-if="form.topicCodes.length">
+                            Selected: {{ form.topicCodes.length }}
+                        </small>
                     </div>
 
                     <div class="checkbox-row">
@@ -99,11 +115,11 @@
                         <label>Is it an Online Training?</label>
                         <div class="radio-group">
                             <label class="radio-item">
-                                <input type="radio" value="true" v-model="form.isOnlineTraining" />
+                                <input type="radio" :value="true" v-model="form.isOnlineTraining" />
                                 <span>Yes</span>
                             </label>
                             <label class="radio-item">
-                                <input type="radio" value="false" v-model="form.isOnlineTraining" />
+                                <input type="radio" :value="false" v-model="form.isOnlineTraining" />
                                 <span>No</span>
                             </label>
                         </div>
@@ -112,16 +128,17 @@
                     <div class="form-group">
                         <label>
                             WebCast / Online Training URL
-                            <span v-if="form.isOnlineTraining === 'true'" class="required">*</span>
+                            <span v-if="form.isOnlineTraining" class="required">*</span>
                         </label>
-                        <input v-model="form.videoUrl"
+
+                        <input v-model.trim="form.videoUrl"
                                type="text"
                                placeholder="Enter webcast or training URL"
-                               :required="form.isOnlineTraining === 'true'"
-                               :class="{ 'required-border': form.isOnlineTraining === 'true' && !form.videoUrl }" />
+                               :required="form.isOnlineTraining"
+                               :class="{ 'required-border': form.isOnlineTraining && !form.videoUrl }" />
                     </div>
 
-                    <div class="form-group" v-if="form.isOnlineTraining === 'true'">
+                    <div class="form-group" v-if="form.isOnlineTraining">
                         <label>Mark as New Until (optional)</label>
                         <input type="date" v-model="form.markAsNewUntil" />
                     </div>
@@ -132,70 +149,83 @@
                     <button type="button" class="btn-secondary" @click="$emit('close')">Cancel</button>
                     <button type="submit" class="btn-primary">Create</button>
                 </div>
-
             </form>
         </div>
     </div>
 </template>
-<script>import apiClient from '@/axios';
-    import { QuillEditor } from '@vueup/vue-quill';
+
+<script>import apiClient from "@/axios";
+    import { QuillEditor } from "@vueup/vue-quill";
 
     export default {
         components: { QuillEditor },
-        emits: ['close', 'created'],
+        emits: ["close", "created"],
         data() {
             return {
                 form: {
-                    courseTitle: '',
-                    description: '',
-                    category: '',
+                    courseTitle: "",
+                    description: "",
+                    topicCodes: [],
+                    //category: "",
                     cnecredits: false,
                     oasascredits: false,
-                    certDescription: '',
-                    miscCertDesc: '',
-                    videoUrl: '',
-                    isOnlineTraining: false,
-                    markAsNewUntil: null
+                    certDescription: "",
+                    miscCertDesc: "",
+                    videoUrl: "",
+                    isOnlineTraining: false, // ✅ boolean now
+                    markAsNewUntil: null,
                 },
-                categories: []
+                topics: [],
+                topicError: false,
+
             };
         },
         async mounted() {
-            const res = await apiClient.get('/Lookup/categories');
-            this.categories = res.data?.$values || [];
+            const res = await apiClient.get("/Lookup/topics");
+            this.topics = Array.isArray(res.data) ? res.data : (res.data?.$values || []);
         },
         methods: {
             async submitTitle() {
                 try {
-                    if (this.form.isOnlineTraining === 'true' && !this.form.videoUrl.trim()) {
-                        alert('Please provide a WebCast or Online Training URL.');
+                    // ✅ TOPIC REQUIRED
+                    const topicCodes = (this.form.topicCodes || []).map(Number).filter(n => !Number.isNaN(n));
+                    if (topicCodes.length === 0) {
+                        this.topicError = true;
+                        alert("Please select at least one topic.");
                         return;
                     }
+                    this.topicError = false;
+
+                    if (this.form.isOnlineTraining && !this.form.videoUrl?.trim()) {
+                        alert("Please provide a WebCast or Online Training URL.");
+                        return;
+                    }
+
                     const payload = {
                         courseTitle: this.form.courseTitle,
-                        description: this.form.description,
-                        category: parseInt(this.form.category),
+                        description: this.form.description || null,
+                        topicCodes, // ✅ required now
                         cnecredits: this.form.cnecredits,
                         oasascredits: this.form.oasascredits,
-                        certDescription: this.form.certDescription,
-                        miscCertDesc: this.form.miscCertDesc,
-                        videoUrl: this.form.videoUrl,
-                        isOnlineTraining: this.form.isOnlineTraining === 'true',
-                        markAsNewUntil: this.form.markAsNewUntil
-
+                        certDescription: this.form.certDescription || null,
+                        miscCertDesc: this.form.miscCertDesc || null,
+                        videoUrl: this.form.videoUrl || null,
+                        isOnlineTraining: this.form.isOnlineTraining,
+                        markAsNewUntil: this.form.markAsNewUntil || null,
                     };
 
-                    await apiClient.post('/TrainingTitle/create', payload);
-                    alert('Training title created successfully!');
-                    this.$emit('created');
-                    this.$emit('close');
+                    const res = await apiClient.post("/TrainingTitle/create", payload);
+                    alert(res.data?.message || "Training title created successfully!");
+                    this.$emit("created");
+                    this.$emit("close");
                 } catch (err) {
-                    console.error('Error creating title', err);
-                    alert('Failed to create title.');
+                    console.error("Error creating title", err?.response?.data || err);
+                    alert(err?.response?.data?.message || "Failed to create title.");
                 }
-            }
-        }
+            },
+        },
     };</script>
+
 
 <style scoped>
     /* OVERLAY */
@@ -399,4 +429,50 @@
             transform: translateY(-3px);
             box-shadow: 0 6px 14px rgba(0,0,0,0.15);
         }
+    .topic-multi {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 8px;
+    }
+
+    .topic-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 10px;
+        background: #f9fafb;
+        cursor: pointer;
+    }
+
+        .topic-item input {
+            width: 16px;
+            height: 16px;
+        }
+
+    .hint {
+        display: block;
+        margin-top: 8px;
+        opacity: 0.8;
+        font-size: 12px;
+    }
+    .required {
+        color: #ef4444;
+        margin-left: 4px;
+    }
+
+    .required-border {
+        border: 1px solid #ef4444 !important;
+        border-radius: 10px;
+        padding: 10px;
+    }
+
+    .error-text {
+        display: block;
+        margin-top: 8px;
+        color: #ef4444;
+        font-size: 12px;
+    }
 </style>
