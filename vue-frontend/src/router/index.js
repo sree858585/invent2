@@ -16,6 +16,7 @@ import MarkAttendance from "@/components/MarkAttendance.vue";
 import ViewAttendance from "@/components/ViewAttendance.vue";
 import RoleManagement from "@/components/RoleManagement.vue";
 import TrainingCalendar from "@/components/TrainingCalendar.vue";
+import PeerCertificationApply from "@/components/PeerCertificationApply.vue";
 
 // ✅ NEW: Admin page for custom calendar events
 import CustomCalendarEventsAdmin from "@/components/CustomCalendarEventsAdmin.vue";
@@ -75,6 +76,11 @@ const routes = [
         name: "MyCourses",
         component: MyCourses,
         props: (route) => ({ status: route.params.status }),
+    },
+    {
+        path: "/peer-certification/apply",
+        name: "PeerCertificationApply",
+        component: PeerCertificationApply,
     },
     {
         path: "/course-module",

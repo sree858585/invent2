@@ -1,9 +1,9 @@
 ﻿<template>
     <div class="peer-certification-container">
         <!-- Apply Button -->
-        <div class="apply-button-container">
-            <button class="apply-btn">Apply for Peer Certification</button>
-        </div>
+        <button class="apply-btn" @click="goToApply">
+            Apply for Peer Certification
+        </button>
 
         <h1>NYS Peer Worker Certification Information and Resources</h1>
         <p>
@@ -97,8 +97,13 @@
 </template>
 
 <script>export default {
-        name: "PeerCertificationPage",
-    };</script>
+  name: "PeerCertificationPage",
+  methods: {
+    goToApply() {
+      this.$router.push("/peer-certification/apply");
+    }
+  }
+};</script>
 
 <style scoped>
     .peer-certification-container {
