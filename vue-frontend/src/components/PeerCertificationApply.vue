@@ -1,4 +1,4 @@
-﻿<template>
+<template>
     <div class="apply-wrap">
         <!-- ✅ Login Modal -->
         <LoginModal v-if="showLogin"
@@ -761,7 +761,6 @@
         </div>
     </div>
 </template>
-
 <script>import LoginModal from "@/components/LoginComponent.vue";
 
     export default {
@@ -771,7 +770,6 @@
         data() {
             return {
                 showLogin: false,
-
 
                 locked: {
                     FirstName: false,
@@ -802,7 +800,7 @@
                     { id: 3, label: "Required Courses" },
                     { id: 4, label: "Supervisor / Practicum" },
                     { id: 5, label: "Additional Uploads" },
-                    { id: 6, label: "Exam" }
+                    { id: 6, label: "Exam" },
                 ],
 
                 lookups: { ethnicities: [], races: [], educations: [], genders: [] },
@@ -867,24 +865,28 @@
                     PracticumBDate: null,
                     PracticumEDate: null,
                 },
+
                 uploads: {
                     loading: false,
-                    docs: [],  // from API
+                    docs: [],
                     uploading: false,
-                    message: ""
+                    message: "",
                 },
+
                 ethicsModalOpen: false,
                 ethics: {
                     loading: false,
                     signed: false,
                     signatureName: "",
                     agreed: false,
-                    signedAt: null,     // display only
-                    message: ""
+                    signedAt: null,
+                    message: "",
                 },
-                docTypes: [], // fetched from backend
+
+                docTypes: [],
             };
         },
+
         computed: {
             commitmentLen() {
                 return (this.form.ExperienceCommitment || "").trim().length;
@@ -893,34 +895,32 @@
                 return "/api/PeerCertification/ethics/pdf";
             },
             ethicsPdfViewerUrl() {
-                // Hide left thumbnails panel + fit page width
-                // Works in many browsers: Chrome/Edge/Firefox (support varies slightly)
                 return `${this.ethicsPdfUrl}#zoom=page-width&navpanes=0&toolbar=0`;
             },
             challengesLen() {
                 return (this.form.ExperienceChallenges || "").trim().length;
             },
             requiredDocTypes() {
-                return (this.docTypes || []).filter(d => d.required === true);
+                return (this.docTypes || []).filter((d) => d.required === true);
             },
             optionalDocTypes() {
-                return (this.docTypes || []).filter(d => d.required !== true);
+                return (this.docTypes || []).filter((d) => d.required !== true);
             },
             whyLen() {
                 return (this.form.ExperienceWhy || "").trim().length;
             },
             requiredDocTypesNonEthics() {
-                return (this.docTypes || []).filter(d => d.required === true && d.peerDocId !== 3);
+                return (this.docTypes || []).filter((d) => d.required === true && d.peerDocId !== 3);
             },
             step2HasErrors() {
-                return this.currentStep === 2 && (
-                    !!this.errors.ExperienceCommitment ||
-                    !!this.errors.ExperienceChallenges ||
-                    !!this.errors.ExperienceWhy
+                return (
+                    this.currentStep === 2 &&
+                    (!!this.errors.ExperienceCommitment ||
+                        !!this.errors.ExperienceChallenges ||
+                        !!this.errors.ExperienceWhy)
                 );
-            }
+            },
         },
-
 
         async mounted() {
             if (!this.getUserGuid()) {
@@ -933,6 +933,43 @@
         },
 
         methods: {
+            /* =========================================================
+             * ✅ ONE FIX FOR ALL FETCH CALLS
+             * - Always sends cookies/credentials reliably (include)
+             * - Prevents "HTML returned instead of JSON" surprises
+             * - Keeps your URLs the same style (/api/...)
+             * ========================================================= */
+            async apiFetch(url, options = {}) {
+                const fullUrl = url.startsWith("/api")
+                    ? url
+                    : `/api${url.startsWith("/") ? "" : "/"}${url}`;
+
+                const opts = {
+                    ...options,
+                    credentials: "include", // ✅ key fix (works even when ports differ)
+                    headers: {
+                        ...(options.headers || {}),
+                        ...(options.body instanceof FormData ? {} : { Accept: "application/json" }),
+                    },
+                };
+
+                const res = await fetch(fullUrl, opts);
+
+                // If the backend returned HTML (login page / SPA fallback), throw a helpful error.
+                const ct = (res.headers.get("content-type") || "").toLowerCase();
+                if (ct.includes("text/html")) {
+                    const txt = await res.text();
+                    throw new Error(
+                        `Expected JSON but got HTML. Check auth/proxy/cookies. First chars: ${txt.slice(
+                            0,
+                            120
+                        )}`
+                    );
+                }
+
+                return res;
+            },
+
             handleLoginSuccess(loginPayload) {
                 if (loginPayload?.userId) localStorage.setItem("userId", loginPayload.userId);
                 if (loginPayload?.token) localStorage.setItem("token", loginPayload.token);
@@ -940,37 +977,42 @@
                 this.showLogin = false;
                 this.loadLookups().then(() => this.loadApplicantInfo());
             },
+
             docTypeName(docTypeId) {
                 const id = Number(docTypeId);
-                const hit = (this.docTypes || []).find(x => Number(x.peerDocId) === id);
+                const hit = (this.docTypes || []).find((x) => Number(x.peerDocId) === id);
                 return hit?.name || `Document (${id})`;
             },
+
             async ensureStep5Loaded() {
                 if (this.currentStep !== 5) return;
                 await this.loadStep5DocTypes();
                 await this.loadUploads();
-                await this.loadEthicsStatus(); 
+                await this.loadEthicsStatus();
             },
+
             openEthicsModal() {
                 this.ethicsModalOpen = true;
             },
+
             closeEthicsModal() {
                 this.ethicsModalOpen = false;
             },
+
             triggerFile(docId) {
                 const r = this.$refs[`file_${docId}`];
-                // Vue refs can be array sometimes; normalize
                 const el = Array.isArray(r) ? r[0] : r;
                 if (el && el.click) el.click();
             },
+
             docsForRequiredType(docTypeId) {
-                const requiredIds = this.requiredDocTypes.map(d => d.peerDocId);
+                const requiredIds = this.requiredDocTypes.map((d) => d.peerDocId);
                 if (!requiredIds.includes(docTypeId)) return [];
                 return this.docsForType(docTypeId);
             },
 
             docsForOptionalType(docTypeId) {
-                const optionalIds = this.optionalDocTypes.map(d => d.peerDocId);
+                const optionalIds = this.optionalDocTypes.map((d) => d.peerDocId);
                 if (!optionalIds.includes(docTypeId)) return [];
                 return this.docsForType(docTypeId);
             },
@@ -983,9 +1025,8 @@
                 this.ethics.message = "";
 
                 try {
-                    const res = await fetch(`/api/PeerCertification/ethics/${id}`, {
+                    const res = await this.apiFetch(`/api/PeerCertification/ethics/${id}`, {
                         method: "GET",
-                        credentials: "same-origin"
                     });
                     if (!res.ok) return;
 
@@ -997,13 +1038,13 @@
                     this.ethics.loading = false;
                 }
             },
+
             async signEthics() {
                 const id = this.getUserGuid();
                 if (!id) return;
 
                 this.ethics.message = "";
 
-                // validate
                 if (this.ethics.agreed !== true) {
                     this.ethics.message = "Please confirm you agree to the Code of Ethics.";
                     return;
@@ -1014,14 +1055,13 @@
                 }
 
                 try {
-                    const res = await fetch(`/api/PeerCertification/ethics/${id}`, {
+                    const res = await this.apiFetch(`/api/PeerCertification/ethics/${id}`, {
                         method: "POST",
-                        credentials: "same-origin",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                             signatureName: this.ethics.signatureName.trim(),
-                            agreed: true
-                        })
+                            agreed: true,
+                        }),
                     });
 
                     if (!res.ok) {
@@ -1033,8 +1073,8 @@
                     this.ethics.signed = true;
                     this.ethics.signedAt = data?.signedAt ?? new Date().toISOString();
                     this.ethics.message = "Signed successfully.";
-                } catch {
-                    this.ethics.message = "Sign failed (network error).";
+                } catch (e) {
+                    this.ethics.message = e?.message || "Sign failed (network error).";
                 }
             },
 
@@ -1045,17 +1085,21 @@
                     { peerDocId: 3, name: "Code of Ethics", required: true, description: null },
                     { peerDocId: 2, name: "Resume", required: true, description: null },
                     { peerDocId: 4, name: "Foundational Training Certificate", required: false, description: null },
-                    { peerDocId: 8, name: "Safe Talk Suicide Alertness Training Certificate", required: false, description: null },
+                    {
+                        peerDocId: 8,
+                        name: "Safe Talk Suicide Alertness Training Certificate",
+                        required: false,
+                        description: null,
+                    },
                     { peerDocId: 6, name: "Other Certificates / Diplomas", required: false, description: null },
                     { peerDocId: 7, name: "Supervisor Practicum Evaluation Form", required: true, description: null },
                 ];
 
                 try {
-                    const res = await fetch("/api/PeerCertification/step5-doc-types", { credentials: "same-origin" });
+                    const res = await this.apiFetch("/api/PeerCertification/step5-doc-types");
                     let api = [];
                     if (res.ok) api = await res.json();
 
-                    // merge: API wins, but DON'T overwrite fallback with null/empty
                     const safeMerge = (base, incoming) => {
                         const out = { ...(base || {}) };
                         for (const [k, v] of Object.entries(incoming || {})) {
@@ -1070,7 +1114,6 @@
                     for (const f of fallback) map.set(f.peerDocId, f);
 
                     for (const a of api || []) {
-                        // support either peerDocId or PeerDocId from backend
                         const id = Number(a.peerDocId ?? a.PeerDocId);
                         if (!id) continue;
 
@@ -1078,28 +1121,21 @@
                             peerDocId: id,
                             name: a.name ?? a.Name,
                             required: a.required ?? a.Required,
-                            description: a.description ?? a.Description
+                            description: a.description ?? a.Description,
                         };
 
                         map.set(id, safeMerge(map.get(id), normalized));
                     }
 
-                    // IMPORTANT: include everything we know about, not only requiredOrder
                     const allIds = Array.from(map.keys());
-
-                    // keep your preferred ordering first, then append the rest
                     const orderedIds = [
-                        ...requiredOrder.filter(id => map.has(id)),
-                        ...allIds.filter(id => !requiredOrder.includes(id))
+                        ...requiredOrder.filter((id) => map.has(id)),
+                        ...allIds.filter((id) => !requiredOrder.includes(id)),
                     ];
 
-                    this.docTypes = orderedIds.map(id => map.get(id)).filter(Boolean);
-
-                    // final ordered list
-                    this.docTypes = requiredOrder.map(id => map.get(id)).filter(Boolean);
-
+                    // ✅ FIX: do NOT overwrite docTypes again (keeps optional docs too)
+                    this.docTypes = orderedIds.map((id) => map.get(id)).filter(Boolean);
                 } catch {
-                    // if API fails, still show fallback
                     this.docTypes = fallback;
                 }
             },
@@ -1111,18 +1147,15 @@
 
             isValidUsPhone(v) {
                 const d = this.digitsOnly(v);
-
-                // allow 10 digits, or 11 digits starting with 1
                 if (d.length === 10) return true;
                 if (d.length === 11 && d.startsWith("1")) return true;
-
                 return false;
             },
 
             formatUsPhone(v) {
                 let d = this.digitsOnly(v);
                 if (d.length === 11 && d.startsWith("1")) d = d.slice(1);
-                if (d.length !== 10) return v; // don't format partial/invalid
+                if (d.length !== 10) return v;
 
                 const a = d.slice(0, 3);
                 const b = d.slice(3, 6);
@@ -1156,6 +1189,7 @@
                 if (data && Array.isArray(data.$values)) return data.$values;
                 return [];
             },
+
             validateStep2() {
                 const e = { ...this.errors };
 
@@ -1176,16 +1210,11 @@
                     "ExperienceCommitment",
                     "Please describe your personal commitment to wellness related to your lived experience (HIV, HCV, or harm reduction)."
                 );
-
                 min500Required(
                     "ExperienceChallenges",
                     "Please describe two challenges you experienced in your journey to wellness and how you overcame them."
                 );
-
-                min500Required(
-                    "ExperienceWhy",
-                    "Please explain why you would like to serve as a peer worker."
-                );
+                min500Required("ExperienceWhy", "Please explain why you would like to serve as a peer worker.");
 
                 this.errors = e;
                 return !e.ExperienceCommitment && !e.ExperienceChallenges && !e.ExperienceWhy;
@@ -1195,7 +1224,8 @@
                 const e = { ...this.errors };
 
                 if (this.form.RequiredCourses !== true) {
-                    e.RequiredCourses = "Please confirm you have completed all required core and specialty courses.";
+                    e.RequiredCourses =
+                        "Please confirm you have completed all required core and specialty courses.";
                 } else {
                     delete e.RequiredCourses;
                 }
@@ -1222,19 +1252,16 @@
                 req("SupvrLastName", "Supervisor Last Name");
                 req("SupvrContAddr1", "Organization Address (Line 1)");
 
-                // ✅ Supervisor phone required + format
                 if (req("SupvrContPhone", "Supervisor Phone")) {
                     const d = this.digitsOnly(this.form.SupvrContPhone);
                     if (!(d.length === 10 || (d.length === 11 && d.startsWith("1")))) {
                         e.SupvrContPhone = "Please enter a valid phone number (10 digits).";
                     } else {
-                        // normalize stored value in form too (optional)
                         this.form.SupvrContPhone = d.length === 11 ? d.slice(1) : d;
                         delete e.SupvrContPhone;
                     }
                 }
 
-                // ✅ Supervisor email required + format
                 if (req("SupvrContEmail", "Supervisor Email")) {
                     if (!this.isValidEmail(this.form.SupvrContEmail)) {
                         e.SupvrContEmail = "Please enter a valid email address. Example: name@agency.org.";
@@ -1243,7 +1270,6 @@
                     }
                 }
 
-                // If practicum completed -> require min checkbox + dates
                 if (this.form.ComplPracticum === true) {
                     if (this.form.ComplPracticumMin !== true) {
                         e.ComplPracticumMin = "Please confirm whether your practicum was at least 500 hours.";
@@ -1257,7 +1283,6 @@
                     if (!this.form.PracticumEDate) e.PracticumEDate = "Practicum end date is required.";
                     else delete e.PracticumEDate;
 
-                    //  extra: end date must be >= start date
                     if (this.form.PracticumBDate && this.form.PracticumEDate) {
                         const s = new Date(this.form.PracticumBDate);
                         const en = new Date(this.form.PracticumEDate);
@@ -1273,22 +1298,27 @@
 
                 this.errors = e;
 
-                //  Return true only if there are no step-4 related errors
                 const step4Keys = [
-                    "SupvrOrgName", "SupvrFirstName", "SupvrLastName", "SupvrContAddr1",
-                    "SupvrContPhone", "SupvrContEmail", "ComplPracticumMin",
-                    "PracticumBDate", "PracticumEDate"
+                    "SupvrOrgName",
+                    "SupvrFirstName",
+                    "SupvrLastName",
+                    "SupvrContAddr1",
+                    "SupvrContPhone",
+                    "SupvrContEmail",
+                    "ComplPracticumMin",
+                    "PracticumBDate",
+                    "PracticumEDate",
                 ];
 
-                return step4Keys.every(k => !e[k]);
+                return step4Keys.every((k) => !e[k]);
             },
 
             validateStep5() {
                 const e = { ...this.errors };
-                const requiredIds = (this.docTypes || []).filter(x => x.required).map(x => x.peerDocId);
+                const requiredIds = (this.docTypes || []).filter((x) => x.required).map((x) => x.peerDocId);
 
-                const missing = requiredIds.filter(id => {
-                    if (id === 3) return this.ethics.signed !== true; // ✅ ethics special case
+                const missing = requiredIds.filter((id) => {
+                    if (id === 3) return this.ethics.signed !== true;
                     return this.docsForType(id).length === 0;
                 });
 
@@ -1305,13 +1335,11 @@
 
                 this.uploads.loading = true;
                 try {
-                    const res = await fetch(`/api/PeerCertification/uploads/${id}`, { credentials: "same-origin" });
+                    const res = await this.apiFetch(`/api/PeerCertification/uploads/${id}`);
                     if (!res.ok) return;
 
                     const data = await res.json();
-
-                    // ✅ normalize docs to always be an array
-                    const rawDocs = data?.docs ?? data?.Docs ?? data; // allow different shapes
+                    const rawDocs = data?.docs ?? data?.Docs ?? data;
                     this.uploads.docs = this.unwrapDotNetList(rawDocs);
                 } finally {
                     this.uploads.loading = false;
@@ -1322,7 +1350,7 @@
                 const docs = this.unwrapDotNetList(this.uploads.docs);
                 const t = Number(docType);
 
-                return docs.filter(d => {
+                return docs.filter((d) => {
                     const id = Number(d.peerDocId ?? d.PeerDocId ?? d.docType ?? d.DocType);
                     return id === t;
                 });
@@ -1341,10 +1369,9 @@
                 this.uploads.message = "";
 
                 try {
-                    const res = await fetch(`/api/PeerCertification/uploads/${id}`, {
+                    const res = await this.apiFetch(`/api/PeerCertification/uploads/${id}`, {
                         method: "POST",
-                        credentials: "same-origin",
-                        body: fd
+                        body: fd,
                     });
 
                     if (!res.ok) {
@@ -1356,11 +1383,11 @@
                     const rawDocs = data?.docs ?? data?.Docs ?? data;
                     this.uploads.docs = this.unwrapDotNetList(rawDocs);
                     this.uploads.message = "Uploaded successfully.";
-                } catch {
-                    this.uploads.message = "Upload failed (network error).";
+                } catch (e) {
+                    this.uploads.message = e?.message || "Upload failed (network error).";
                 } finally {
                     this.uploads.uploading = false;
-                    evt.target.value = ""; // reset input
+                    if (evt?.target) evt.target.value = "";
                 }
             },
 
@@ -1374,9 +1401,8 @@
 
                 if (!confirm("Remove this document?")) return;
 
-                const res = await fetch(`/api/PeerCertification/uploads/${id}/${peerDocSysId}`, {
+                const res = await this.apiFetch(`/api/PeerCertification/uploads/${id}/${peerDocSysId}`, {
                     method: "DELETE",
-                    credentials: "same-origin"
                 });
 
                 if (!res.ok) {
@@ -1395,7 +1421,7 @@
                 return items
                     .map((x) => ({
                         code: x.code ?? x.Code ?? x.id ?? x.Id ?? null,
-                        value: x.value ?? x.Value ?? x.label ?? x.Label ?? ""
+                        value: x.value ?? x.Value ?? x.label ?? x.Label ?? "",
                     }))
                     .filter((x) => x.code !== null);
             },
@@ -1403,16 +1429,16 @@
             async loadLookups() {
                 try {
                     const [eth, race, edu] = await Promise.all([
-                        fetch("/api/Lookup/ethnicities", { credentials: "same-origin" }),
-                        fetch("/api/Lookup/races", { credentials: "same-origin" }),
-                        fetch("/api/Lookup/educations", { credentials: "same-origin" })
+                        this.apiFetch("/api/Lookup/ethnicities"),
+                        this.apiFetch("/api/Lookup/races"),
+                        this.apiFetch("/api/Lookup/educations"),
                     ]);
 
                     this.lookups.ethnicities = this.normalizeLookupList(eth.ok ? await eth.json() : null);
                     this.lookups.races = this.normalizeLookupList(race.ok ? await race.json() : null);
                     this.lookups.educations = this.normalizeLookupList(edu.ok ? await edu.json() : null);
 
-                    const genRes = await fetch("/api/PeerCertification/lookups", { credentials: "same-origin" });
+                    const genRes = await this.apiFetch("/api/PeerCertification/lookups");
                     const genJson = genRes.ok ? await genRes.json() : null;
                     this.lookups.genders = this.normalizeLookupList(genJson?.genders);
                 } catch {
@@ -1420,7 +1446,6 @@
                 }
             },
 
-            // ✅ Validate: all mandatory except CellPhone, WorkPhone, WorkPhoneExt
             validateStep1() {
                 const e = {};
 
@@ -1465,9 +1490,8 @@
                 this.errors = {};
 
                 try {
-                    const res = await fetch(`/api/PeerCertification/applicant-info/${id}`, {
+                    const res = await this.apiFetch(`/api/PeerCertification/applicant-info/${id}`, {
                         method: "GET",
-                        credentials: "same-origin"
                     });
 
                     if (res.status === 401) {
@@ -1482,8 +1506,8 @@
 
                     const data = await res.json();
 
-                    const toCamel = (s) => s ? (s.charAt(0).toLowerCase() + s.slice(1)) : s;
-                    const toPascal = (s) => s ? (s.charAt(0).toUpperCase() + s.slice(1)) : s;
+                    const toCamel = (s) => (s ? s.charAt(0).toLowerCase() + s.slice(1) : s);
+                    const toPascal = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
                     const pick = (obj, ...keys) => {
                         for (const k of keys) {
@@ -1492,7 +1516,6 @@
                         return undefined;
                     };
 
-                    // API returns camelCase; form uses PascalCase
                     const map = {
                         FirstName: "firstName",
                         Mi: "mi",
@@ -1528,7 +1551,6 @@
                         AgencyAffilation: "agencyAffilation",
                         CertificationTrack: "certificationTrack",
 
-                        // ✅ ADD THESE (Step 2 + Step 3) — optional if you use toCamel fallback, but good clarity:
                         ExperienceCommitment: "experienceCommitment",
                         ExperienceChallenges: "experienceChallenges",
                         ExperienceWhy: "experienceWhy",
@@ -1548,27 +1570,16 @@
                         PracticumEDate: "practicumEDate",
                     };
 
-                    
-                    
                     Object.keys(this.form).forEach((k) => {
-                        const apiKeyFromMap = map[k];     // e.g. "experienceCommitment"
-                        const camelFromForm = toCamel(k); // e.g. "experienceCommitment"
+                        const apiKeyFromMap = map[k];
+                        const camelFromForm = toCamel(k);
                         const pascalFromMap = apiKeyFromMap ? toPascal(apiKeyFromMap) : undefined;
 
-                        const val = pick(
-                            data,
-                            apiKeyFromMap,      // map-provided camelCase
-                            camelFromForm,      // computed camelCase from form key
-                            pascalFromMap,      // computed PascalCase from map key (if exists)
-                            k                   // form key as-is
-                        );
-
+                        const val = pick(data, apiKeyFromMap, camelFromForm, pascalFromMap, k);
                         if (val !== undefined) this.form[k] = val;
                     });
 
-                    //  safe date conversion to YYYY-MM-DD
                     const toDateOnly = (v) => (v ? String(v).slice(0, 10) : null);
-
                     this.form.PracticumBDate = toDateOnly(this.form.PracticumBDate);
                     this.form.PracticumEDate = toDateOnly(this.form.PracticumEDate);
 
@@ -1576,7 +1587,6 @@
                     this.form.ComplPracticum = toBool(this.form.ComplPracticum);
                     this.form.ComplPracticumMin = toBool(this.form.ComplPracticumMin);
 
-                    // format DOB for <input type="date">
                     if (data?.dob) {
                         const d = new Date(data.dob);
                         const yyyy = d.getFullYear();
@@ -1584,6 +1594,7 @@
                         const dd = String(d.getDate()).padStart(2, "0");
                         this.form.Dob = `${yyyy}-${mm}-${dd}`;
                     }
+
                     if (!this.form.State || String(this.form.State).trim() === "") {
                         this.form.State = "NY";
                     }
@@ -1595,21 +1606,16 @@
                         if (Object.prototype.hasOwnProperty.call(this.locked, key)) this.locked[key] = true;
                     };
 
-                    // Choose what to lock:
                     ["FirstName", "LastName"].forEach(lockIfHasValue);
-                    // keep others editable by default (you can add more if needed)
-
-                } catch {
-                    this.saveMessage = "Load failed (network error).";
+                } catch (e) {
+                    this.saveMessage = e?.message || "Load failed (network error).";
                 } finally {
                     this.loading = false;
                 }
             },
 
             buildPayloadForCurrentStep() {
-                const base = {
-                    CertificationTrack: this.form.CertificationTrack
-                };
+                const base = { CertificationTrack: this.form.CertificationTrack };
 
                 if (this.currentStep === 1) {
                     return {
@@ -1667,10 +1673,7 @@
                 }
 
                 if (this.currentStep === 3) {
-                    return {
-                        ...base,
-                        RequiredCourses: this.form.RequiredCourses,
-                    };
+                    return { ...base, RequiredCourses: this.form.RequiredCourses };
                 }
 
                 if (this.currentStep === 4) {
@@ -1690,11 +1693,9 @@
                     };
                 }
 
-                // steps 5-6 later
                 return base;
             },
 
-            // returns true/false; when called from Next/Stepper it blocks navigation if not saved
             async saveDraft(silent = false) {
                 const id = this.getUserGuid();
                 if (!id) {
@@ -1703,42 +1704,36 @@
                     return false;
                 }
 
-                // Validate current step
                 if (this.currentStep === 1) {
-                    const ok = this.validateStep1();
-                    if (!ok) {
+                    if (!this.validateStep1()) {
                         this.saveMessage = "Please complete the required fields.";
                         return false;
                     }
                 }
 
                 if (this.currentStep === 2) {
-                    const ok = this.validateStep2();
-                    if (!ok) {
+                    if (!this.validateStep2()) {
                         this.saveMessage = "Please complete all three responses (min 500 characters each).";
                         return false;
                     }
                 }
 
                 if (this.currentStep === 3) {
-                    const ok = this.validateStep3();
-                    if (!ok) {
+                    if (!this.validateStep3()) {
                         this.saveMessage = "Please complete the required confirmation.";
                         return false;
                     }
                 }
 
                 if (this.currentStep === 4) {
-                    const ok = this.validateStep4();
-                    if (!ok) {
+                    if (!this.validateStep4()) {
                         this.saveMessage = "Please complete the required fields in Step 4.";
                         return false;
                     }
                 }
 
                 if (this.currentStep === 5) {
-                    const ok = this.validateStep5();
-                    if (!ok) {
+                    if (!this.validateStep5()) {
                         this.saveMessage = this.errors.Step5;
                         return false;
                     }
@@ -1746,17 +1741,14 @@
 
                 this.saving = true;
                 if (!silent) this.saveMessage = "";
-                this.errors = this.errors || {};
 
                 try {
-                    //  ONLY send fields for current step
                     const payload = this.buildPayloadForCurrentStep();
 
-                    const res = await fetch(`/api/PeerCertification/applicant-info/${id}`, {
+                    const res = await this.apiFetch(`/api/PeerCertification/applicant-info/${id}`, {
                         method: "PUT",
-                        credentials: "same-origin",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(payload)
+                        body: JSON.stringify(payload),
                     });
 
                     if (res.status === 401) {
@@ -1770,24 +1762,16 @@
                         return false;
                     }
 
-                    // Optional: refresh local form with what server returns
-                    //let serverData = null;
-                    //const ct = res.headers.get("content-type") || "";
-                    //if (ct.includes("application/json")) {
-                    //    serverData = await res.json();
-                    //}
-
                     if (!silent) this.saveMessage = "Saved successfully.";
                     return true;
-                } catch {
-                    this.saveMessage = "Save failed (network error).";
+                } catch (e) {
+                    this.saveMessage = e?.message || "Save failed (network error).";
                     return false;
                 } finally {
                     this.saving = false;
                 }
             },
 
-            // ✅ autosave before step navigation
             async goToStep(step) {
                 if (step === this.currentStep) return;
 
@@ -1795,48 +1779,41 @@
                 if (!saved) return;
 
                 this.currentStep = step;
-
                 await this.ensureStep5Loaded();
-
                 window.scrollTo({ top: 0, behavior: "smooth" });
             },
+
             async prevStep() {
                 const saved = await this.saveDraft(true);
                 if (!saved) return;
 
                 if (this.currentStep > 1) this.currentStep--;
-
                 await this.ensureStep5Loaded();
-
                 window.scrollTo({ top: 0, behavior: "smooth" });
             },
 
-            // ✅ autosave on Next
             async nextStep() {
                 const saved = await this.saveDraft(true);
                 if (!saved) return;
 
                 if (this.currentStep < 6) this.currentStep++;
-
                 await this.ensureStep5Loaded();
-
                 window.scrollTo({ top: 0, behavior: "smooth" });
             },
 
             submitApplication() {
                 alert("Submit endpoint will be added in Step 6.");
-            }
+            },
         },
+
         watch: {
             currentStep: {
                 immediate: true,
                 handler() {
                     this.ensureStep5Loaded();
-                }
-            }
-        }
-
-        
+                },
+            },
+        },
     };</script>
 
 <style scoped>
