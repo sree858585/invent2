@@ -53,5 +53,58 @@ namespace HIVTraining_Vue.Server.Controllers
             var sites = await _context.Sites.ToListAsync();
             return Ok(sites);
         }
+
+        [HttpGet("ethnicities")]
+        public async Task<IActionResult> GetEthnicities()
+        {
+            var items = await _context.LkEthnicities
+                .OrderBy(x => x.Value)
+                .Select(x => new { x.Code, x.Value })
+                .ToListAsync();
+
+            return Ok(items);
+        }
+
+        [HttpGet("races")]
+        public async Task<IActionResult> GetRaces()
+        {
+            var items = await _context.LkRaces
+                .OrderBy(x => x.Value)
+                .Select(x => new { x.Code, x.Value })
+                .ToListAsync();
+
+            return Ok(items);
+        }
+
+        [HttpGet("educations")]
+        public async Task<IActionResult> GetEducations()
+        {
+            var items = await _context.LkEducations
+                .OrderBy(x => x.Value)
+                .Select(x => new { x.Code, x.Value })
+                .ToListAsync();
+
+            return Ok(items);
+        }
+
+        [HttpGet("genders")]
+        public async Task<IActionResult> GetGenders()
+        {
+            var items = await _context.LkGenders
+                .OrderBy(x => x.Value)
+                .Select(x => new { x.Code, x.Value })
+                .ToListAsync();
+
+            return Ok(items);
+
+            // If you DO NOT have a table, replace above with this:
+            // return Ok(new[]
+            // {
+            //     new { Code = 1, Value = "Male" },
+            //     new { Code = 2, Value = "Female" },
+            //     new { Code = 3, Value = "Non-binary" },
+            //     new { Code = 4, Value = "Prefer not to say" }
+            // });
+        }
     }
 }
