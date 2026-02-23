@@ -1,4 +1,4 @@
-<template>
+﻿<template>
     <div class="apply-wrap">
         <!-- ✅ Login Modal -->
         <LoginModal v-if="showLogin"

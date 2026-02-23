@@ -65,7 +65,7 @@
                          :key="course.courseSysId"
                          class="card"
                          @click="openCourseModal(course)">
-                        <div class="card-image" :style="courseImageStyle">
+                        <div class="card-image" :style="courseImageStyle(course)">
                             <div v-if="course.cnecredits || course.oasascredits" class="credit-tag">
                                 {{ [course.cnecredits ? 'CNE' : '', course.oasascredits ? 'OASAS' : ''].filter(Boolean).join(' | ') }}
                             </div>
@@ -176,15 +176,7 @@ export default {
     };
   },
   computed: {
-    courseImageStyle() {
-      const imageUrl = require("@/assets/hiv2.png");
-      return {
-        backgroundImage: `url(${imageUrl})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundRepeat: "no-repeat",
-      };
-    },
+    
     totalPages() {
       return Math.ceil(this.totalItems / this.pageSize);
     },
@@ -256,10 +248,30 @@ export default {
     }
   },
   methods: {
+
     handleShowRegister() {
       this.showLoginModal = false;
       this.showRegisterModal = true;
-    },
+      },
+      courseImageStyle(course) {
+          const fallback = require("@/assets/hiv2.png");
+
+          const url = course?.titleImageUrl || course?.TitleImageUrl;
+
+          const base = apiClient.defaults.baseURL?.replace(/\/api\/?$/, "");
+          // ex: http://aidev/HIVTrainingDemo
+
+          const fullUrl = url
+              ? (url.startsWith("http") ? url : `${base}${url}`)
+              : null;
+
+          return {
+              backgroundImage: `url(${fullUrl || fallback})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              backgroundRepeat: "no-repeat",
+          };
+      },
     handleRegisterSuccess() {
       this.showRegisterModal = false;
       this.fetchUser();

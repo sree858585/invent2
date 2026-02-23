@@ -24,6 +24,92 @@
                         <p>Edit title name and primary metadata.</p>
                     </div>
 
+                    <!-- TITLE IMAGE -->
+                    <section class="section-card">
+                        <div class="section-header">
+                            <h3>Title Image</h3>
+                            <p>Upload or replace the banner image for this training title.</p>
+                        </div>
+
+                        <div class="image-grid">
+                            <!-- Current image -->
+                            <div class="image-card">
+                                <div class="image-card-head">
+                                    <span class="pill">Current</span>
+                                    <button v-if="hasCurrentImage"
+                                            type="button"
+                                            class="link-btn"
+                                            @click="refreshCurrentImage"
+                                            title="Refresh">
+                                        Refresh
+                                    </button>
+                                </div>
+
+                                <div class="image-preview">
+                                    <img v-if="hasCurrentImage"
+                                         :src="currentImageUrl"
+                                         alt="Current title image" />
+                                    <div v-else class="image-empty">
+                                        No image uploaded yet
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- New image -->
+                            <div class="image-card">
+                                <div class="image-card-head">
+                                    <span class="pill pill-soft">New</span>
+                                    <button v-if="newImageFile"
+                                            type="button"
+                                            class="link-btn danger"
+                                            @click="clearNewImage"
+                                            title="Remove selected image">
+                                        Remove
+                                    </button>
+                                </div>
+
+                                <div class="dropzone"
+                                     :class="{ 'dropzone-has-file': !!newImageFile }"
+                                     @dragover.prevent
+                                     @drop.prevent="onDropImage">
+                                    <input ref="fileInput"
+                                           type="file"
+                                           accept="image/png,image/jpeg,image/webp"
+                                           class="file-input-hidden"
+                                           @change="onPickImage" />
+
+                                    <div v-if="!newImagePreviewUrl" class="dropzone-content">
+                                        <div class="icon">🖼️</div>
+                                        <div class="title">Drag & drop an image here</div>
+                                        <div class="sub">PNG / JPG / WEBP • Max 2MB</div>
+
+                                        <button type="button" class="btn-upload" @click="openFilePicker">
+                                            Choose Image
+                                        </button>
+                                    </div>
+
+                                    <div v-else class="new-preview">
+                                        <img :src="newImagePreviewUrl" alt="New preview" />
+                                        <div class="new-meta">
+                                            <div class="file-name">{{ newImageFile?.name }}</div>
+                                            <div class="file-sub">
+                                                {{ (newImageFile?.size / 1024).toFixed(0) }} KB
+                                            </div>
+
+                                            <button type="button" class="btn-upload ghost" @click="openFilePicker">
+                                                Change Image
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <small class="hint" v-if="imageError" style="color:#ef4444;">
+                                    {{ imageError }}
+                                </small>
+                            </div>
+                        </div>
+                    </section>
+
                     <div class="form-group">
                         <label>Course Title *</label>
                         <input v-model="form.courseTitle" required />
@@ -170,6 +256,13 @@
                 },
                 topics: [],
       topicError: false,
+
+      //  image state
+  hasCurrentImage: false,
+  currentImageUrl: "",
+  newImageFile: null,
+  newImagePreviewUrl: "",
+  imageError: ""
             };
         },
         async mounted() {
@@ -205,53 +298,130 @@
                     ? data.markAsNewUntil.substring(0, 10)
                     : null
             };
+this.hasCurrentImage = !!data.hasTitleImage || !!data.titleImagePath;
+
+// set image url if available
+if (this.hasCurrentImage) {
+  this.refreshCurrentImage();
+}
         },
         methods: {
+
+        openFilePicker() {
+  this.$refs.fileInput?.click();
+},
+
+refreshCurrentImage() {
+  // cache bust to force reload after upload
+  const id = this.form.subjectSysId;
+  this.currentImageUrl = `/api/TrainingTitle/${id}/image?t=${Date.now()}`;
+},
+
+clearNewImage() {
+  this.newImageFile = null;
+  this.newImagePreviewUrl = "";
+  this.imageError = "";
+  if (this.$refs.fileInput) this.$refs.fileInput.value = "";
+},
+
+validateImageFile(file) {
+  this.imageError = "";
+
+  if (!file) return false;
+
+  const allowed = ["image/png", "image/jpeg", "image/webp"];
+  if (!allowed.includes(file.type)) {
+    this.imageError = "Invalid image type. Allowed: PNG / JPG / WEBP.";
+    return false;
+  }
+
+  const maxBytes = 2 * 1024 * 1024;
+  if (file.size > maxBytes) {
+    this.imageError = "Image too large. Max size is 2MB.";
+    return false;
+  }
+
+  return true;
+},
+
+setNewImage(file) {
+  if (!this.validateImageFile(file)) return;
+
+  this.newImageFile = file;
+  this.newImagePreviewUrl = URL.createObjectURL(file);
+},
+
+onPickImage(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  this.setNewImage(file);
+},
+
+onDropImage(e) {
+  const file = e.dataTransfer?.files?.[0];
+  if (!file) return;
+  this.setNewImage(file);
+},
             async updateTitle() {
-      try {
-        // ✅ TOPIC REQUIRED
-        const topicCodes = (this.form.topicCodes || []).map(Number).filter(n => !Number.isNaN(n));
-        if (topicCodes.length === 0) {
-          this.topicError = true;
-          alert("Please select at least one topic.");
-          return;
-        }
-        this.topicError = false;
+  try {
+    // ✅ TOPIC REQUIRED
+    const topicCodes = (this.form.topicCodes || [])
+      .map(Number)
+      .filter(n => !Number.isNaN(n));
 
-        // ✅ Online URL required if online
-        if (this.form.isOnlineTraining === "true" && !this.form.videoUrl?.trim()) {
-          alert("Please provide a WebCast or Online Training URL.");
-          return;
-        }
+    if (topicCodes.length === 0) {
+      this.topicError = true;
+      alert("Please select at least one topic.");
+      return;
+    }
+    this.topicError = false;
 
-        const payload = {
-          subjectSysId: this.form.subjectSysId,
-          courseTitle: this.form.courseTitle,
-          description: this.form.description || null,
+    // ✅ Online URL required if online
+    if (this.form.isOnlineTraining === "true" && !this.form.videoUrl?.trim()) {
+      alert("Please provide a WebCast or Online Training URL.");
+      return;
+    }
 
-          // ✅ send topics to backend
-          topicCodes,
+    // ✅ 1) Update title data
+    const payload = {
+      subjectSysId: this.form.subjectSysId,
+      courseTitle: this.form.courseTitle,
+      description: this.form.description || null,
+      topicCodes,
+      cnecredits: this.form.cnecredits,
+      oasascredits: this.form.oasascredits,
+      certDescription: this.form.certDescription || null,
+      miscCertDesc: this.form.miscCertDesc || null,
+      videoUrl: this.form.videoUrl || null,
+      isOnlineTraining: this.form.isOnlineTraining === "true",
+      markAsNewUntil: this.form.markAsNewUntil || null
+    };
 
-          cnecredits: this.form.cnecredits,
-          oasascredits: this.form.oasascredits,
-          certDescription: this.form.certDescription || null,
-          miscCertDesc: this.form.miscCertDesc || null,
+    await apiClient.put(`/TrainingTitle/update/${this.form.subjectSysId}`, payload);
 
-          videoUrl: this.form.videoUrl || null,
-          isOnlineTraining: this.form.isOnlineTraining === "true",
-          markAsNewUntil: this.form.markAsNewUntil || null,
-        };
+    // ✅ 2) If new image selected, upload it
+    if (this.newImageFile) {
+      const fd = new FormData();
+      fd.append("file", this.newImageFile);
 
-        await apiClient.put(`/TrainingTitle/update/${this.form.subjectSysId}`, payload);
+      await apiClient.post(`/TrainingTitle/${this.form.subjectSysId}/image`, fd, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
 
-        alert("Training title updated successfully!");
-        this.$emit("updated");
-        this.$emit("close");
-      } catch (err) {
-        console.error("Error updating title", err?.response?.data || err);
-        alert(err?.response?.data?.message || "Failed to update training title.");
-      }
-            },
+      // update UI current image immediately
+      this.hasCurrentImage = true;
+      this.refreshCurrentImage();
+      this.clearNewImage();
+    }
+
+    alert("Training title updated successfully!");
+    this.$emit("updated");
+    this.$emit("close");
+  } catch (err) {
+    console.error("Error updating title", err?.response?.data || err);
+    alert(err?.response?.data?.message || "Failed to update training title.");
+  }
+},
         },
     };</script>
 
@@ -535,4 +705,191 @@
         color: #ef4444;
         font-size: 12px;
     }
+    .image-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+
+    @media (max-width: 900px) {
+        .image-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .image-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 16px;
+        background: #fff;
+        overflow: hidden;
+        box-shadow: 0 10px 24px rgba(15,23,42,0.06);
+    }
+
+    .image-card-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 14px;
+        border-bottom: 1px solid #f1f5f9;
+    }
+
+    .pill {
+        font-size: 12px;
+        font-weight: 700;
+        color: #43285D;
+        background: rgba(67,40,93,0.12);
+        padding: 6px 10px;
+        border-radius: 999px;
+    }
+
+    .pill-soft {
+        background: rgba(59,130,246,0.12);
+        color: #1f4b99;
+    }
+
+    .link-btn {
+        border: none;
+        background: transparent;
+        color: #43285D;
+        font-weight: 600;
+        cursor: pointer;
+        padding: 6px 8px;
+        border-radius: 10px;
+    }
+
+        .link-btn:hover {
+            background: rgba(67,40,93,0.08);
+        }
+
+        .link-btn.danger {
+            color: #b91c1c;
+        }
+
+            .link-btn.danger:hover {
+                background: rgba(185,28,28,0.10);
+            }
+
+    .image-preview {
+        padding: 14px;
+        height: 210px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f8fafc;
+    }
+
+        .image-preview img {
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 12px;
+            border: 1px solid #e5e7eb;
+            background: #fff;
+        }
+
+    .image-empty {
+        color: #6b7280;
+        font-size: 13px;
+    }
+
+    .file-input-hidden {
+        display: none;
+    }
+
+    .dropzone {
+        padding: 14px;
+        height: 210px;
+        background: #f8fafc;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-top: 1px solid #f1f5f9;
+    }
+
+    .dropzone-content {
+        text-align: center;
+    }
+
+    .dropzone .icon {
+        font-size: 26px;
+        margin-bottom: 8px;
+    }
+
+    .dropzone .title {
+        font-weight: 700;
+        color: #111827;
+    }
+
+    .dropzone .sub {
+        margin-top: 4px;
+        font-size: 12px;
+        color: #6b7280;
+    }
+
+    .dropzone-has-file {
+        background: #ffffff;
+    }
+
+    .new-preview {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        width: 100%;
+    }
+
+        .new-preview img {
+            width: 160px;
+            height: 96px;
+            object-fit: cover;
+            border-radius: 12px;
+            border: 1px solid #e5e7eb;
+        }
+
+    .new-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .file-name {
+        font-weight: 700;
+        color: #111827;
+        max-width: 260px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .file-sub {
+        font-size: 12px;
+        color: #6b7280;
+    }
+
+    .btn-upload {
+        margin-top: 12px;
+        background: #43285D;
+        color: white;
+        border: none;
+        border-radius: 999px;
+        padding: 10px 16px;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 0 8px 18px rgba(67,40,93,0.18);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+        .btn-upload:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 14px 26px rgba(67,40,93,0.24);
+        }
+
+        .btn-upload.ghost {
+            background: #eef2ff;
+            color: #43285D;
+            box-shadow: none;
+        }
+
+            .btn-upload.ghost:hover {
+                background: #e0e7ff;
+                transform: translateY(-1px);
+            }
 </style>
