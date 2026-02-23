@@ -118,13 +118,20 @@ namespace HIVTraining.Controllers
                         .Where(s => s.SiteSysId == c.SiteSysId)
                         .Select(s => s.SiteName)
                         .FirstOrDefault(),
+                    SubjectSysId = c.Subject != null ? c.Subject.SubjectSysId : 0,
 
-                    SubjectTitle = c.Subject.CourseTitle,
-                    SubjectDescription = c.Subject.Description,
-                    c.Subject.Cnecredits,
-                    c.Subject.Oasascredits,
-                    c.Subject.PeerCertCredits,
-                    c.Subject.CreditHrs,
+                    SubjectTitle = c.Subject != null ? c.Subject.CourseTitle : null,
+                    SubjectDescription = c.Subject != null ? c.Subject.Description : null,
+                    TitleImageUrl = c.Subject != null && !string.IsNullOrEmpty(c.Subject.TitleImagePath)
+    ? $"/api/TrainingTitle/{c.Subject.SubjectSysId}/image"
+    : null,
+
+                    TitleImagePath = c.Subject != null ? c.Subject.TitleImagePath : null,
+
+                    Cnecredits = c.Subject != null ? c.Subject.Cnecredits : false,
+                    Oasascredits = c.Subject != null ? c.Subject.Oasascredits : false,
+                    PeerCertCredits = c.Subject != null ? c.Subject.PeerCertCredits : false,
+                    CreditHrs = c.Subject != null ? c.Subject.CreditHrs : null,
 
                     Sessions = _context.CourseSessions
                         .Where(s => s.CourseSysId == c.CourseSysId)
@@ -632,14 +639,16 @@ namespace HIVTraining.Controllers
                 course.VirtualUrl,
 
                 TrainingUrl = course.Subject != null ? course.Subject.VideoUrl : null,  // ✅ add
-
+                TitleImageUrl = course.Subject != null && !string.IsNullOrEmpty(course.Subject.TitleImagePath)
+    ? $"/api/TrainingTitle/{course.Subject.SubjectSysId}/image"
+    : null,
 
                 SubjectTitle = course.Subject?.CourseTitle,
                 SubjectDescription = course.Subject?.Description,
-                course.Subject?.Cnecredits,
-                course.Subject?.Oasascredits,
-                course.Subject?.PeerCertCredits,
-                course.Subject?.CreditHrs,
+                Cnecredits = course.Subject != null ? course.Subject.Cnecredits : false,
+                Oasascredits = course.Subject != null ? course.Subject.Oasascredits : false,
+                PeerCertCredits = course.Subject != null ? course.Subject.PeerCertCredits : false,
+                CreditHrs = course.Subject != null ? course.Subject.CreditHrs : null,
 
                 FormatLabel = _context.LkFormats
                     .Where(f => f.Code == course.Format)

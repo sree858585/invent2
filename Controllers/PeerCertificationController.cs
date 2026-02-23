@@ -12,6 +12,10 @@ using System.IO;
 using Microsoft.AspNetCore.Hosting;
 using System.Collections.Generic; 
 using System.Text.Json;
+using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
+using Microsoft.Extensions.Configuration;
+using System.Linq;
 
 namespace HIVTraining_Vue.Server.Controllers
 {
@@ -21,12 +25,35 @@ namespace HIVTraining_Vue.Server.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly IWebHostEnvironment _env;
+        private readonly BlobContainerClient _container;
 
-        public PeerCertificationController(ApplicationDbContext context, IWebHostEnvironment env)
+        private bool _containerReady = false;
+
+        private async Task EnsureContainerAsync()
+        {
+            if (_containerReady) return;
+
+            await _container.CreateIfNotExistsAsync(
+                publicAccessType: PublicAccessType.None,
+                metadata: null,
+                encryptionScopeOptions: null,
+                cancellationToken: default
+            );
+
+            _containerReady = true;
+        }
+
+        public PeerCertificationController(ApplicationDbContext context, IWebHostEnvironment env, IConfiguration config)
         {
             _context = context;
             _env = env;
 
+            var cs = config["Storage:ConnectionString"];
+            var containerName = config["Storage:ContainerName"] ?? "peer-cert";
+
+            var serviceClient = new BlobServiceClient(cs);
+            _container = serviceClient.GetBlobContainerClient(containerName);
+            
         }
 
         private static readonly string[] AllowedExt = new[] { ".pdf", ".doc", ".docx", ".png", ".jpg", ".jpeg" };
@@ -43,6 +70,23 @@ namespace HIVTraining_Vue.Server.Controllers
             // also prevent weird traversal attempts
             fileName = fileName.Replace("..", "_");
             return fileName;
+        }
+
+        private static string GuessContentType(string fileName)
+        {
+            var provider = new FileExtensionContentTypeProvider();
+            if (provider.TryGetContentType(fileName, out var ct)) return ct;
+            return "application/octet-stream";
+        }
+
+        private static string SafeBlobSegment(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return "file";
+            // keep it simple: avoid weird chars
+            foreach (var c in Path.GetInvalidFileNameChars())
+                s = s.Replace(c, '_');
+            s = s.Replace("..", "_").Replace("/", "_").Replace("\\", "_");
+            return s;
         }
 
         [HttpGet("step5-doc-types")]
@@ -506,32 +550,70 @@ namespace HIVTraining_Vue.Server.Controllers
         [HttpGet("uploads/{userId:guid}")]
         public async Task<IActionResult> GetUploads(Guid userId)
         {
-            var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == userId);
-            if (user == null) return NotFound(new { message = "User not found" });
+            var user = await _context.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.UserId == userId);
 
-            var peer = await _context.PeerUsers.AsNoTracking().FirstOrDefaultAsync(p => p.UserSysId == user.UserSysId);
-            if (peer == null) return Ok(new { peerSysId = (int?)null, docs = Array.Empty<object>() });
+            if (user == null)
+                return NotFound(new { message = "User not found" });
 
-            var docs = await (
+            var peer = await _context.PeerUsers
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.UserSysId == user.UserSysId);
+
+            if (peer == null)
+                return Ok(new { peerSysId = (int?)null, docs = Array.Empty<object>() });
+
+            // ✅ Only return blob-backed records
+            // - excludes ethics JSON (starts with "{")
+            // - excludes old disk paths (/Users/...)
+            // - includes only new blob paths (peeruploads/...)
+            var rows = await (
                 from d in _context.PeerDocs.AsNoTracking()
                 join t in _context.LkPeerDocTypes.AsNoTracking()
                     on d.PeerDocId equals t.PeerDocId
                 where d.PeerSysId == peer.PeerSysId
                       && d.Active == true
                       && t.Active == true
+                      && d.DocPath != null
+                      && !d.DocPath.StartsWith("{")
+                      && d.DocPath.StartsWith("peeruploads/")
                 orderby d.DateUpload descending
                 select new
                 {
                     d.PeerDocSysId,
-                    d.PeerDocId,                // ✅ use this in UI filtering
-                    docTypeName = t.Name,       // optional display
-                    FileName = Path.GetFileName(d.DocPath),
+                    d.PeerDocId,
+                    docTypeName = t.Name,
+                    d.DocPath,
                     d.DateUpload,
                     d.Reviewed
                 }
             ).ToListAsync();
 
+            var docs = rows.Select(x => new
+            {
+                x.PeerDocSysId,
+                x.PeerDocId,
+                x.docTypeName,
+                fileName = GetFileNameFromDocPath(x.DocPath),
+                x.DateUpload,
+                x.Reviewed
+            }).ToList();
+
             return Ok(new { peerSysId = peer.PeerSysId, docs });
+        }
+        private static string GetFileNameFromDocPath(string? docPath)
+        {
+            if (string.IsNullOrWhiteSpace(docPath)) return "";
+
+            // ethics JSON record (not a file)
+            if (docPath.TrimStart().StartsWith("{")) return "";
+
+            var idx = docPath.LastIndexOf('/');
+            if (idx >= 0 && idx < docPath.Length - 1)
+                return docPath.Substring(idx + 1);
+
+            return Path.GetFileName(docPath);
         }
 
         [HttpPost("uploads/{userId:guid}")]
@@ -554,41 +636,19 @@ namespace HIVTraining_Vue.Server.Controllers
             var peer = await _context.PeerUsers.FirstOrDefaultAsync(p => p.UserSysId == user.UserSysId);
             if (peer == null) return BadRequest(new { message = "Peer record not found. Save Step 1 first." });
 
-            // optional rule: allow only one file per docType by soft-deactivating previous
-            var existing = await _context.PeerDocs
-                .Where(d => d.PeerSysId == peer.PeerSysId && d.DocType == docType && d.Active == true)
-                .ToListAsync();
-            foreach (var d in existing)
-            {
-                d.Active = false;
-                d.DateModify = DateTime.UtcNow;
-            }
-
-            Directory.CreateDirectory(UploadRoot);
-
-            // folder per PeerSysId
-            var folder = Path.Combine(UploadRoot, peer.PeerSysId.ToString());
-            Directory.CreateDirectory(folder);
-
-            var safeName = SafeFileName(Path.GetFileName(file.FileName));
-            var storedName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}{ext}";
-            var fullPath = Path.Combine(folder, storedName);
-
-            using (var stream = new FileStream(fullPath, FileMode.CreateNew))
-            {
-                await file.CopyToAsync(stream);
-            }
-
-            // ✅ Validate doc type exists and active (from Lk_Peer_Doc_Type)
+            // validate doc type exists and active
             var dt = await _context.LkPeerDocTypes
                 .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.PeerDocId == docType && x.Active == true);
 
             if (dt == null)
                 return BadRequest(new { message = "Invalid document type." });
+            await EnsureContainerAsync();
+
+            // Soft-deactivate previous docs for same type (optional rule)
             var existingDocs = await _context.PeerDocs
-    .Where(d => d.PeerSysId == peer.PeerSysId && d.PeerDocId == docType && d.Active == true)
-    .ToListAsync();
+                .Where(d => d.PeerSysId == peer.PeerSysId && d.PeerDocId == docType && d.Active == true)
+                .ToListAsync();
 
             foreach (var d in existingDocs)
             {
@@ -596,17 +656,34 @@ namespace HIVTraining_Vue.Server.Controllers
                 d.DateModify = DateTime.UtcNow;
             }
 
+            // Build blob name
+            var originalSafe = SafeBlobSegment(Path.GetFileName(file.FileName));
+            var ext2 = Path.GetExtension(originalSafe).ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(ext2)) ext2 = ext;
+
+            var storedName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}{ext2}";
+            var blobName = $"peeruploads/{peer.PeerSysId}/{docType}/{storedName}";
+
+            // Upload to blob
+            var blob = _container.GetBlobClient(blobName);
+
+            await using (var stream = file.OpenReadStream())
+            {
+                await blob.UploadAsync(stream, new BlobHttpHeaders
+                {
+                    ContentType = string.IsNullOrWhiteSpace(file.ContentType)
+                        ? GuessContentType(originalSafe)
+                        : file.ContentType
+                });
+            }
+
+            // Save DB record with DocPath = blobName
             var doc = new PeerDoc
             {
                 PeerSysId = peer.PeerSysId,
-
-                //  FIX: category stored here
                 PeerDocId = docType,
-
-                // optional: keep DocType same if older code expects it
-                DocType = docType,
-
-                DocPath = fullPath,
+                DocType = docType,      // keep for backward compatibility
+                DocPath = blobName,     // ✅ now a blob path, not disk path
                 DateUpload = DateTime.UtcNow,
                 Active = true,
                 UploadBy = user.Email ?? user.UserSysId.ToString(),
@@ -622,37 +699,67 @@ namespace HIVTraining_Vue.Server.Controllers
         [HttpGet("uploads/download/{peerDocSysId:int}")]
         public async Task<IActionResult> Download(int peerDocSysId)
         {
-            var doc = await _context.PeerDocs.AsNoTracking().FirstOrDefaultAsync(d => d.PeerDocSysId == peerDocSysId);
-            if (doc == null || doc.Active != true) return NotFound();
+            var doc = await _context.PeerDocs.AsNoTracking()
+                .FirstOrDefaultAsync(d => d.PeerDocSysId == peerDocSysId);
 
-            if (!System.IO.File.Exists(doc.DocPath))
-                return NotFound(new { message = "File missing on server." });
+            if (doc == null || doc.Active != true)
+                return NotFound(new { message = "Document not found." });
 
-            var provider = new FileExtensionContentTypeProvider();
-            if (!provider.TryGetContentType(doc.DocPath, out var contentType))
-                contentType = "application/octet-stream";
+            // If this is ethics JSON stored in DocPath, do NOT try blob download
+            if (!string.IsNullOrWhiteSpace(doc.DocPath) && doc.DocPath.TrimStart().StartsWith("{"))
+                return BadRequest(new { message = "This record is not a file upload." });
 
-            var fileName = Path.GetFileName(doc.DocPath);
-            var bytes = await System.IO.File.ReadAllBytesAsync(doc.DocPath);
+            var blobName = doc.DocPath;
+            if (string.IsNullOrWhiteSpace(blobName))
+                return NotFound(new { message = "Missing blob path in DocPath." });
 
-            return File(bytes, contentType, fileName);
+            var blob = _container.GetBlobClient(blobName);
+
+            if (!await blob.ExistsAsync())
+                return NotFound(new { message = "File missing in blob storage." });
+
+            var fileName = blobName.Contains("/")
+                ? blobName.Split('/').Last()
+                : Path.GetFileName(blobName);
+
+            var contentType = GuessContentType(fileName);
+
+            var dl = await blob.DownloadStreamingAsync();
+            return File(dl.Value.Content, contentType, fileName);
         }
         [HttpDelete("uploads/{userId:guid}/{peerDocSysId:int}")]
         public async Task<IActionResult> DeleteUpload(Guid userId, int peerDocSysId)
         {
             var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == userId);
-            if (user == null) return NotFound();
+            if (user == null) return NotFound(new { message = "User not found" });
 
             var peer = await _context.PeerUsers.FirstOrDefaultAsync(p => p.UserSysId == user.UserSysId);
-            if (peer == null) return NotFound();
+            if (peer == null) return NotFound(new { message = "Peer record not found" });
 
-            var doc = await _context.PeerDocs.FirstOrDefaultAsync(d => d.PeerDocSysId == peerDocSysId && d.PeerSysId == peer.PeerSysId);
-            if (doc == null) return NotFound();
+            var doc = await _context.PeerDocs
+                .FirstOrDefaultAsync(d => d.PeerDocSysId == peerDocSysId && d.PeerSysId == peer.PeerSysId);
+
+            if (doc == null) return NotFound(new { message = "Document not found" });
+
+            // Try delete blob (best effort)
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(doc.DocPath) && !doc.DocPath.TrimStart().StartsWith("{"))
+                {
+                    var blob = _container.GetBlobClient(doc.DocPath);
+                    await blob.DeleteIfExistsAsync(DeleteSnapshotsOption.IncludeSnapshots);
+                }
+            }
+            catch
+            {
+                // ignore storage errors; still soft delete DB
+            }
 
             doc.Active = false;
             doc.DateModify = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
+
             return await GetUploads(userId);
         }
 

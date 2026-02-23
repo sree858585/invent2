@@ -6,6 +6,11 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Text.Json;
+using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.StaticFiles;
+using System.IO;
 
 namespace HIVTraining_Vue.Server.Controllers
 {
@@ -14,10 +19,108 @@ namespace HIVTraining_Vue.Server.Controllers
     public class TrainingTitleController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly BlobContainerClient _titleImageContainer;
+        private bool _titleImageContainerReady = false;
 
-        public TrainingTitleController(ApplicationDbContext context)
+        public TrainingTitleController(ApplicationDbContext context, IConfiguration config)
         {
             _context = context;
+
+            var cs = config["Storage:ConnectionString"];
+            var containerName = config["Storage:TitleImagesContainerName"] ?? "title-images";
+
+            var serviceClient = new BlobServiceClient(cs);
+            _titleImageContainer = serviceClient.GetBlobContainerClient(containerName);
+        }
+
+        private async Task EnsureTitleImageContainerAsync()
+        {
+            if (_titleImageContainerReady) return;
+
+            await _titleImageContainer.CreateIfNotExistsAsync(PublicAccessType.None);
+            _titleImageContainerReady = true;
+        }
+
+        private static readonly string[] AllowedImageExt = new[] { ".png", ".jpg", ".jpeg", ".webp" };
+        private const long MaxTitleImageBytes = 2 * 1024 * 1024; // 2MB
+
+        private static string GuessContentType(string fileName)
+        {
+            var provider = new FileExtensionContentTypeProvider();
+            return provider.TryGetContentType(fileName, out var ct) ? ct : "application/octet-stream";
+        }
+
+        [HttpPost("{subjectId:int}/image")]
+        [RequestSizeLimit(MaxTitleImageBytes)]
+        public async Task<IActionResult> UploadTitleImage(int subjectId, [FromForm] IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest(new { message = "No file uploaded." });
+
+            if (file.Length > MaxTitleImageBytes)
+                return BadRequest(new { message = "Image too large (max 2MB)." });
+
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (!AllowedImageExt.Contains(ext))
+                return BadRequest(new { message = "Invalid image type. Allowed: png, jpg, jpeg, webp." });
+
+            var subject = await _context.Subjects.FirstOrDefaultAsync(s => s.SubjectSysId == subjectId);
+            if (subject == null)
+                return NotFound(new { message = "Title not found." });
+
+            await EnsureTitleImageContainerAsync();
+
+            // delete old image (optional but recommended)
+            if (!string.IsNullOrWhiteSpace(subject.TitleImagePath))
+            {
+                try
+                {
+                    await _titleImageContainer.GetBlobClient(subject.TitleImagePath).DeleteIfExistsAsync();
+                }
+                catch { /* ignore */ }
+            }
+
+            var blobName = $"titles/{subjectId}/{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}{ext}";
+            var blob = _titleImageContainer.GetBlobClient(blobName);
+
+            await using (var stream = file.OpenReadStream())
+            {
+                await blob.UploadAsync(stream, new BlobHttpHeaders
+                {
+                    ContentType = string.IsNullOrWhiteSpace(file.ContentType)
+                        ? GuessContentType(file.FileName)
+                        : file.ContentType
+                });
+            }
+
+            subject.TitleImagePath = blobName;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Image uploaded!", subjectId, blobName });
+        }
+
+        [HttpGet("{subjectId:int}/image")]
+        public async Task<IActionResult> GetTitleImage(int subjectId)
+        {
+            var subject = await _context.Subjects.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.SubjectSysId == subjectId);
+
+            if (subject == null)
+                return NotFound(new { message = "Title not found." });
+
+            if (string.IsNullOrWhiteSpace(subject.TitleImagePath))
+                return NotFound(new { message = "No image uploaded for this title." });
+
+            var blob = _titleImageContainer.GetBlobClient(subject.TitleImagePath);
+
+            if (!await blob.ExistsAsync())
+                return NotFound(new { message = "Image missing in blob storage." });
+
+            var fileName = subject.TitleImagePath.Split('/').Last();
+            var contentType = GuessContentType(fileName);
+
+            var dl = await blob.DownloadStreamingAsync();
+            return File(dl.Value.Content, contentType, fileName);
         }
 
         [HttpPost("create")]
@@ -187,7 +290,10 @@ namespace HIVTraining_Vue.Server.Controllers
                 subject.VideoUrl,
                 subject.IsOnlineTraining,
                 subject.MarkAsNewUntil,
-                topicCodes
+                topicCodes,
+
+                hasTitleImage = !string.IsNullOrWhiteSpace(subject.TitleImagePath),
+                titleImagePath = subject.TitleImagePath
             });
         }
 
