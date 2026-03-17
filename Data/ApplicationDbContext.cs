@@ -162,6 +162,8 @@ namespace HIVTraining_Vue.Data
 
         public DbSet<SubjectTopic> SubjectTopics { get; set; }
 
+        public DbSet<HomeBanner> HomeBanners { get; set; }
+
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -1369,6 +1371,14 @@ namespace HIVTraining_Vue.Data
                 entity.Property(e => e.Value).HasColumnName("value");
                 entity.Property(e => e.Timemodified).HasColumnName("timemodified");
             });
+
+            modelBuilder.Entity<HomeBanner>()
+                .Property(x => x.ActionType)
+                .HasMaxLength(20);
+
+            modelBuilder.Entity<HomeBanner>()
+                .Property(x => x.BannerName)
+                .HasMaxLength(200);
 
             OnModelCreatingPartial(modelBuilder);
         }
