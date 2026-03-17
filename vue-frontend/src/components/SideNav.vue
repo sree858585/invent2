@@ -111,6 +111,8 @@
                             <li><router-link to="/system/instructor-management">Instructor Management</router-link></li>
                             <li><router-link to="/system/course-list">Course List</router-link></li>
                             <li><router-link to="/system/custom-calendar-events">Custom Calendar Events</router-link></li>
+                            <li><router-link to="/system/home-banners">Home Page Banners</router-link></li>
+
 
                         </ul>
                     </li>

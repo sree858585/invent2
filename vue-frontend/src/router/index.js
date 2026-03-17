@@ -17,6 +17,7 @@ import ViewAttendance from "@/components/ViewAttendance.vue";
 import RoleManagement from "@/components/RoleManagement.vue";
 import TrainingCalendar from "@/components/TrainingCalendar.vue";
 import PeerCertificationApply from "@/components/PeerCertificationApply.vue";
+import HomeBannersAdmin from "@/components/HomeBannersAdmin.vue";
 
 // ✅ NEW: Admin page for custom calendar events
 import CustomCalendarEventsAdmin from "@/components/CustomCalendarEventsAdmin.vue";
@@ -118,6 +119,12 @@ const routes = [
         path: "/system/custom-calendar-events",
         name: "CustomCalendarEventsAdmin",
         component: CustomCalendarEventsAdmin,
+        beforeEnter: requireAdminOrManager,
+    },
+    {
+        path: "/system/home-banners",
+        name: "HomeBannersAdmin",
+        component: HomeBannersAdmin,
         beforeEnter: requireAdminOrManager,
     },
 
