@@ -35,6 +35,8 @@ public partial class Subject
 
     public string? VideoUrl { get; set; }
 
+    public string? TitleImagePath { get; set; }
+
     /// <summary>
     /// Indicate this is The Gaming Agency course or not
     /// </summary>
