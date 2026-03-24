@@ -710,10 +710,116 @@
                     <div class="span-2 muted" v-if="saveMessage">{{ saveMessage }}</div>
                 </div>
 
-                <!-- ✅ Step 6 (MUST be directly after Step 5 in the same chain) -->
+                <!-- ✅ Step 6 -->
                 <div v-else-if="currentStep === 6">
-                    <h3>Step 6: Exam</h3>
-                    <p>Next we will build this.</p>
+                    <h3 class="exam-title">Step 6: Peer Certification Exam</h3>
+
+                    <div class="exam-intro-card">
+                        <div>
+                            <h4>Complete all required exam courses</h4>
+                            <p>
+                                Launch each online exam below and complete it fully. All listed courses must reach
+                                <strong>100% completion</strong> before you can submit your Peer Certification application.
+                            </p>
+                        </div>
+
+                        <div class="exam-summary-pill" :class="{ ready: allExamCoursesCompleted }">
+                            {{ completedExamCount }} / {{ examItems.length }} Completed
+                        </div>
+                    </div>
+
+                    <div v-if="examsMessage" class="muted" style="margin-bottom: 12px;">
+                        {{ examsMessage }}
+                    </div>
+
+                    <div v-if="errors.Step6" class="error-text" style="margin-bottom: 12px;">
+                        {{ errors.Step6 }}
+                    </div>
+
+                    <div v-if="examsLoading" class="exam-loading-card">
+                        Loading exam courses...
+                    </div>
+
+                    <template v-else>
+                        <div v-if="!showScormPlayer" class="exam-grid">
+                            <div v-for="exam in examItems"
+                                 :key="exam.subjectSysId"
+                                 class="exam-card"
+                                 :class="{ completed: isExamCompleted(exam) }">
+
+                                <div class="exam-card-top">
+                                    <div>
+                                        <div class="exam-badge">
+                                            {{ isExamCompleted(exam) ? "Completed" : "Pending" }}
+                                        </div>
+
+                                        <h4>{{ exam.courseTitle }}</h4>
+
+                                        <p class="exam-desc">
+                                            {{ exam.description || "Launch this SCORM exam and complete all required content." }}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div class="exam-progress-row">
+                                    <div class="exam-progress-meta">
+                                        <span>Progress</span>
+                                        <strong>{{ getExamPercent(exam) }}%</strong>
+                                    </div>
+
+                                    <div class="exam-progress-bar">
+                                        <div class="exam-progress-fill" :style="{ width: `${getExamPercent(exam)}%` }"></div>
+                                    </div>
+                                </div>
+
+                                <div class="exam-card-footer">
+                                    <button class="btn btn-primary"
+                                            type="button"
+                                            @click="launchExam(exam)"
+                                            :disabled="!exam.videoUrl">
+                                        {{ isExamCompleted(exam) ? "Reopen Exam" : "Launch Exam" }}
+                                    </button>
+
+                                    <div class="exam-status-text" :class="{ ok: isExamCompleted(exam) }">
+                                        {{ isExamCompleted(exam) ? "Ready for submission" : "Completion required" }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div v-else class="exam-player-shell">
+                            <div class="exam-player-header">
+                                <div>
+                                    <h4>{{ selectedExam?.courseTitle || "SCORM Exam" }}</h4>
+                                    <p>
+                                        Complete the course, then use the back button inside the player header to return here.
+                                    </p>
+                                </div>
+
+                                <button class="btn btn-secondary" type="button" @click="closeScormPlayer">
+                                    Close Player
+                                </button>
+                            </div>
+
+                            <ScormPlayer :launchUrl="scormLaunchUrl"
+                                         :registrationId="scormRegistrationId"
+                                         :scoId="scormScoId"
+                                         :preloadCmi="scormPreloadCmi"
+                                         :title="selectedExam?.courseTitle || 'Exam Player'"
+                                         @exit="handleScormExit" />
+                        </div>
+
+                        <div class="exam-bottom-note" :class="{ ready: allExamCoursesCompleted }">
+                            <strong v-if="allExamCoursesCompleted">
+                                All exam courses are complete. You can now submit your application.
+                            </strong>
+                            <strong v-else>
+                                You must complete all {{ examItems.length }} exam courses before submitting.
+                            </strong>
+                        </div>
+                    </template>
+
+                    <div class="span-2 muted" v-if="saveMessage">{{ saveMessage }}</div>
                 </div>
 
                 <!-- ✅ Footer should be OUTSIDE step chain but still inside .body -->
@@ -759,13 +865,40 @@
                 </div>
             </div>
         </div>
+        <div v-if="showSubmitSuccessModal" class="modal-overlay submit-overlay">
+            <div class="modal-card submit-success-modal"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-label="Application Submitted Successfully">
+                <div class="submit-success-top">
+                    <div class="submit-success-icon">✓</div>
+                    <div>
+                        <h3 class="submit-success-title">Application Submitted Successfully</h3>
+                        <p class="submit-success-subtitle">Your Peer Certification application has been submitted.</p>
+                    </div>
+                </div>
+
+                <div class="modal-body submit-success-body">
+                    <p class="success-text">
+                        Please wait for the approval. Once your application is reviewed and approved, you will be notified.
+                    </p>
+
+                    <div class="submit-success-actions">
+                        <button class="btn btn-primary submit-ok-btn" type="button" @click="handleSubmitSuccessOk">
+                            OK
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 <script>import LoginModal from "@/components/LoginComponent.vue";
+import ScormPlayer from "@/components/ScormPlayer.vue";
 
     export default {
         name: "PeerCertificationApply",
-        components: { LoginModal },
+        components: { LoginModal, ScormPlayer },
 
         data() {
             return {
@@ -793,6 +926,7 @@
                 saving: false,
                 saveMessage: "",
                 errors: {},
+                showSubmitSuccessModal: false,
 
                 steps: [
                     { id: 1, label: "Applicant Info" },
@@ -883,6 +1017,17 @@
                     message: "",
                 },
 
+                examItems: [],
+        examsLoading: false,
+        examsMessage: "",
+        selectedExam: null,
+        showScormPlayer: false,
+        scormRegistrationId: "",
+        scormScoId: "",
+        scormLaunchUrl: "",
+        scormPreloadCmi: {},
+        examProgress: {},
+
                 docTypes: [],
             };
         },
@@ -920,6 +1065,12 @@
                         !!this.errors.ExperienceWhy)
                 );
             },
+            allExamCoursesCompleted() {
+    return this.examItems.length > 0 && this.examItems.every(x => this.isExamCompleted(x));
+},
+completedExamCount() {
+    return this.examItems.filter(x => this.isExamCompleted(x)).length;
+},
         },
 
         async mounted() {
@@ -968,6 +1119,12 @@
                 }
 
                 return res;
+            },
+
+            handleSubmitSuccessOk() {
+                this.showSubmitSuccessModal = false;
+
+                this.$router.push("/peer-certification");
             },
 
             handleLoginSuccess(loginPayload) {
@@ -1038,6 +1195,195 @@
                     this.ethics.loading = false;
                 }
             },
+            async ensureStep6Loaded() {
+    if (this.currentStep !== 6) return;
+    await this.loadExamCourses();
+},
+
+async loadExamCourses() {
+    const userId = this.getUserGuid();
+    if (!userId) return;
+
+    this.examsLoading = true;
+    this.examsMessage = "";
+
+    try {
+        const subjectIds = [1010, 1005, 1003, 5];
+
+        const res = await this.apiFetch(
+            `/api/PeerCertification/exam-courses/${userId}?subjectIds=${subjectIds.join(",")}`,
+            { method: "GET" }
+        );
+
+        if (!res.ok) {
+            this.examsMessage = `Failed to load exam courses: ${await res.text()}`;
+            this.examItems = [];
+            return;
+        }
+
+        const data = await res.json();
+        const rows = Array.isArray(data) ? data : (data?.$values || []);
+
+        this.examItems = rows.map(x => ({
+            subjectSysId: x.subjectSysId,
+            courseSysId: x.courseSysId,
+            courseTitle: x.courseTitle,
+            description: x.description,
+            videoUrl: x.videoUrl,
+            scormId: x.scormId ?? x.courseSysId ?? x.subjectSysId,
+            scoId: x.scoId ?? "",
+            completed: x.completed === true,
+            percent: Number(x.percent || 0)
+        }));
+
+        const map = {};
+        this.examItems.forEach(x => {
+            map[x.subjectSysId] = {
+                completed: x.completed === true,
+                percent: Number(x.percent || 0)
+            };
+        });
+        this.examProgress = map;
+    } catch (e) {
+        this.examsMessage = e?.message || "Failed to load exam courses.";
+        this.examItems = [];
+    } finally {
+        this.examsLoading = false;
+    }
+},
+
+isExamCompleted(exam) {
+    const row = this.examProgress?.[exam.subjectSysId];
+    if (!row) return exam.completed === true || Number(exam.percent || 0) >= 100;
+    return row.completed === true || Number(row.percent || 0) >= 100;
+},
+
+getExamPercent(exam) {
+    const row = this.examProgress?.[exam.subjectSysId];
+    if (!row) return Math.min(100, Math.max(0, Number(exam.percent || 0)));
+    return Math.min(100, Math.max(0, Number(row.percent || 0)));
+},
+
+async launchExam(exam) {
+    if (!exam?.videoUrl) {
+        this.examsMessage = "This exam does not have a valid SCORM launch URL.";
+        return;
+    }
+
+    if (!exam?.courseSysId) {
+        this.examsMessage = "This exam is not mapped to a course record.";
+        return;
+    }
+
+    try {
+        this.examsMessage = "";
+        this.selectedExam = exam;
+
+        const userId = this.getUserGuid();
+
+        const regRes = await this.apiFetch("/api/PeerCertification/register-exam-course", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                userId,
+                courseSysId: exam.courseSysId
+            })
+        });
+
+        if (!regRes.ok) {
+            this.examsMessage = `Failed to register exam course: ${await regRes.text()}`;
+            return;
+        }
+
+        const initRes = await this.apiFetch("/api/scorm/runtime/init", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                userId,
+                scormId: exam.courseSysId,
+                scoId: exam.scoId || null,
+                forceNewAttempt: false
+            })
+        });
+
+        if (!initRes.ok) {
+            this.examsMessage = `Failed to initialize exam player: ${await initRes.text()}`;
+            return;
+        }
+
+        const initData = await initRes.json();
+
+        this.scormRegistrationId = initData.registrationId || "";
+        this.scormScoId = initData.scoId || "";
+        this.scormPreloadCmi = initData.preloadCmi || {};
+        this.scormLaunchUrl = exam.videoUrl;
+        this.showScormPlayer = true;
+    } catch (e) {
+        this.examsMessage = e?.message || "Unable to launch exam.";
+    }
+},
+
+async handleScormExit() {
+    this.showScormPlayer = false;
+    this.scormLaunchUrl = "";
+    this.scormRegistrationId = "";
+    this.scormScoId = "";
+    this.scormPreloadCmi = {};
+    await this.refreshExamProgress();
+},
+
+closeScormPlayer() {
+    this.showScormPlayer = false;
+    this.scormLaunchUrl = "";
+    this.scormRegistrationId = "";
+    this.scormScoId = "";
+    this.scormPreloadCmi = {};
+},
+
+async refreshExamProgress() {
+    const userId = this.getUserGuid();
+    if (!userId || !this.examItems.length) return;
+
+    try {
+        const subjectIds = this.examItems.map(x => x.subjectSysId);
+        const res = await this.apiFetch(
+            `/api/PeerCertification/exam-courses/${userId}?subjectIds=${subjectIds.join(",")}`,
+            { method: "GET" }
+        );
+
+        if (!res.ok) return;
+
+        const data = await res.json();
+        const rows = Array.isArray(data) ? data : (data?.$values || []);
+
+        const map = {};
+        rows.forEach(x => {
+            map[x.subjectSysId] = {
+                completed: x.completed === true,
+                percent: Number(x.percent || 0)
+            };
+        });
+
+        this.examProgress = map;
+    } catch {
+        // ignore refresh failure
+    }
+},
+
+validateStep6() {
+    const e = { ...this.errors };
+
+    if (!this.examItems.length) {
+        e.Step6 = "No exam courses are configured.";
+    } else if (!this.allExamCoursesCompleted) {
+        e.Step6 = "Please complete all exam courses to 100% before submitting.";
+    } else {
+        delete e.Step6;
+    }
+
+    this.errors = e;
+    return !e.Step6;
+},
 
             async signEthics() {
                 const id = this.getUserGuid();
@@ -1773,47 +2119,87 @@
             },
 
             async goToStep(step) {
-                if (step === this.currentStep) return;
+    if (step === this.currentStep) return;
 
-                const saved = await this.saveDraft(true);
-                if (!saved) return;
+    const saved = await this.saveDraft(true);
+    if (!saved) return;
 
-                this.currentStep = step;
-                await this.ensureStep5Loaded();
-                window.scrollTo({ top: 0, behavior: "smooth" });
-            },
+    this.currentStep = step;
+    await this.ensureStep5Loaded();
+    await this.ensureStep6Loaded();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+},
 
             async prevStep() {
-                const saved = await this.saveDraft(true);
-                if (!saved) return;
+    const saved = await this.saveDraft(true);
+    if (!saved) return;
 
-                if (this.currentStep > 1) this.currentStep--;
-                await this.ensureStep5Loaded();
-                window.scrollTo({ top: 0, behavior: "smooth" });
-            },
+    if (this.currentStep > 1) this.currentStep--;
+    await this.ensureStep5Loaded();
+    await this.ensureStep6Loaded();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+},
 
             async nextStep() {
+    const saved = await this.saveDraft(true);
+    if (!saved) return;
+
+    if (this.currentStep < 6) this.currentStep++;
+    await this.ensureStep5Loaded();
+    await this.ensureStep6Loaded();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+},
+
+            async submitApplication() {
+                const id = this.getUserGuid();
+                if (!id) {
+                    this.showLogin = true;
+                    this.saveMessage = "Please login to submit.";
+                    return;
+                }
+
                 const saved = await this.saveDraft(true);
                 if (!saved) return;
 
-                if (this.currentStep < 6) this.currentStep++;
-                await this.ensureStep5Loaded();
-                window.scrollTo({ top: 0, behavior: "smooth" });
-            },
+                if (!this.validateStep6()) {
+                    this.saveMessage = this.errors.Step6;
+                    return;
+                }
 
-            submitApplication() {
-                alert("Submit endpoint will be added in Step 6.");
+                this.saving = true;
+                this.saveMessage = "";
+
+                try {
+                    const res = await this.apiFetch(`/api/PeerCertification/submit/${id}`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" }
+                    });
+
+                    if (!res.ok) {
+                        this.saveMessage = `Submit failed: ${await res.text()}`;
+                        return;
+                    }
+
+                    await res.json();
+
+                    this.showSubmitSuccessModal = true;
+                } catch (e) {
+                    this.saveMessage = e?.message || "Submit failed (network error).";
+                } finally {
+                    this.saving = false;
+                }
             },
         },
 
         watch: {
-            currentStep: {
-                immediate: true,
-                handler() {
-                    this.ensureStep5Loaded();
-                },
-            },
+    currentStep: {
+        immediate: true,
+        handler() {
+            this.ensureStep5Loaded();
+            this.ensureStep6Loaded();
         },
+    },
+},
     };</script>
 
 <style scoped>
@@ -2785,5 +3171,391 @@
         border: 1px solid #e5e7eb;
         background: #f9fafb;
         color: #111827;
+    }
+    .exam-title {
+        font-size: 20px;
+        font-weight: 900;
+        margin: 6px 0 14px;
+        color: #111827;
+    }
+
+    .exam-intro-card {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 18px;
+        padding: 18px 20px;
+        border-radius: 16px;
+        border: 1px solid #e5e7eb;
+        background: linear-gradient(180deg, #ffffff 0%, #faf7ff 100%);
+        margin-bottom: 16px;
+    }
+
+        .exam-intro-card h4 {
+            margin: 0 0 8px;
+            font-size: 17px;
+            font-weight: 900;
+            color: #201132;
+        }
+
+        .exam-intro-card p {
+            margin: 0;
+            font-size: 14px;
+            line-height: 1.7;
+            color: #4b5563;
+            max-width: 860px;
+        }
+
+    .exam-summary-pill {
+        flex: 0 0 auto;
+        padding: 10px 16px;
+        border-radius: 999px;
+        background: rgba(67, 40, 93, 0.08);
+        color: #43285d;
+        font-size: 13px;
+        font-weight: 800;
+        border: 1px solid rgba(67, 40, 93, 0.12);
+    }
+
+        .exam-summary-pill.ready {
+            background: rgba(6, 95, 70, 0.10);
+            color: #065f46;
+            border-color: rgba(6, 95, 70, 0.18);
+        }
+
+    .exam-loading-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 16px;
+        padding: 28px;
+        background: #fff;
+        color: #6b7280;
+        font-size: 14px;
+    }
+
+    .exam-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+    }
+
+    .exam-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 18px;
+        padding: 18px;
+        background: #fff;
+        box-shadow: 0 10px 22px rgba(15, 23, 42, 0.05);
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+    }
+
+        .exam-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 16px 30px rgba(15, 23, 42, 0.08);
+        }
+
+        .exam-card.completed {
+            border-color: rgba(6, 95, 70, 0.20);
+            background: linear-gradient(180deg, #ffffff 0%, #f4fbf8 100%);
+        }
+
+    .exam-card-top h4 {
+        margin: 0 0 8px;
+        font-size: 18px;
+        line-height: 1.35;
+        font-weight: 850;
+        color: #201132;
+    }
+
+    .exam-desc {
+        margin: 0;
+        font-size: 14px;
+        color: #5b6472;
+        line-height: 1.7;
+    }
+
+    .exam-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 12px;
+        padding: 7px 12px;
+        border-radius: 999px;
+        background: rgba(67, 40, 93, 0.10);
+        color: #43285d;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .exam-card.completed .exam-badge {
+        background: rgba(6, 95, 70, 0.10);
+        color: #065f46;
+    }
+
+    .exam-progress-row {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .exam-progress-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 13px;
+        color: #4b5563;
+    }
+
+        .exam-progress-meta strong {
+            color: #111827;
+            font-size: 14px;
+        }
+
+    .exam-progress-bar {
+        width: 100%;
+        height: 10px;
+        border-radius: 999px;
+        background: #edf1f5;
+        overflow: hidden;
+    }
+
+    .exam-progress-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #43285d 0%, #7c3aed 100%);
+        transition: width 0.35s ease;
+    }
+
+    .exam-card.completed .exam-progress-fill {
+        background: linear-gradient(90deg, #047857 0%, #10b981 100%);
+    }
+
+    .exam-card-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: auto;
+    }
+
+    .exam-status-text {
+        font-size: 13px;
+        font-weight: 700;
+        color: #b91c1c;
+    }
+
+        .exam-status-text.ok {
+            color: #065f46;
+        }
+
+    .exam-player-shell {
+        border: 1px solid #e5e7eb;
+        border-radius: 18px;
+        overflow: hidden;
+        background: #fff;
+        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.07);
+    }
+
+    .exam-player-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 16px 18px;
+        border-bottom: 1px solid #e5e7eb;
+        background: #fafafa;
+    }
+
+        .exam-player-header h4 {
+            margin: 0 0 4px;
+            font-size: 18px;
+            font-weight: 850;
+            color: #201132;
+        }
+
+        .exam-player-header p {
+            margin: 0;
+            color: #6b7280;
+            font-size: 13px;
+        }
+
+    .exam-bottom-note {
+        margin-top: 16px;
+        padding: 14px 16px;
+        border-radius: 14px;
+        border: 1px solid #f3d2d2;
+        background: #fff7f7;
+        color: #7f1d1d;
+        font-size: 14px;
+    }
+
+        .exam-bottom-note.ready {
+            border-color: #cce9dc;
+            background: #f3fbf7;
+            color: #065f46;
+        }
+
+    @media (max-width: 1000px) {
+        .exam-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-width: 760px) {
+        .exam-intro-card,
+        .exam-player-header,
+        .exam-card-footer {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .exam-summary-pill {
+            width: fit-content;
+        }
+    }
+    .submit-overlay {
+        background: rgba(15, 23, 42, 0.62);
+        backdrop-filter: blur(4px);
+    }
+
+    .submit-success-modal {
+        width: min(560px, 92vw);
+        max-height: unset;
+        overflow: hidden;
+        border: none;
+        border-radius: 24px;
+        box-shadow: 0 28px 60px rgba(15, 23, 42, 0.28);
+        background: linear-gradient(180deg, #ffffff 0%, #faf8ff 100%);
+        animation: submitPopIn 0.22s ease-out;
+    }
+
+    .submit-success-top {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 24px 24px 14px;
+        border-bottom: 1px solid #ece7f3;
+    }
+
+    .submit-success-icon {
+        width: 64px;
+        height: 64px;
+        min-width: 64px;
+        border-radius: 999px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 30px;
+        font-weight: 900;
+        color: #ffffff;
+        background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);
+        box-shadow: 0 14px 28px rgba(34, 197, 94, 0.28);
+    }
+
+    .submit-success-title {
+        margin: 0;
+        font-size: 24px;
+        line-height: 1.2;
+        font-weight: 900;
+        color: #1f1630;
+    }
+
+    .submit-success-subtitle {
+        margin: 6px 0 0;
+        font-size: 14px;
+        color: #6b7280;
+        line-height: 1.5;
+    }
+
+    .submit-success-body {
+        padding: 20px 24px 24px;
+        overflow: visible;
+    }
+
+    .success-text {
+        margin: 0;
+        font-size: 16px;
+        line-height: 1.75;
+        color: #374151;
+        background: #f8fafc;
+        border: 1px solid #e5e7eb;
+        border-left: 5px solid #43285d;
+        border-radius: 16px;
+        padding: 16px 18px;
+    }
+
+    .submit-success-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 20px;
+    }
+
+    .submit-ok-btn {
+        min-width: 120px;
+        height: 46px;
+        font-size: 14px;
+        padding: 0 24px;
+        border-radius: 999px;
+        box-shadow: 0 12px 24px rgba(67, 40, 93, 0.24);
+    }
+
+    @keyframes submitPopIn {
+        from {
+            opacity: 0;
+            transform: translateY(14px) scale(0.96);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+    }
+
+    @media (max-width: 640px) {
+        .submit-success-modal {
+            width: min(94vw, 94vw);
+            border-radius: 20px;
+        }
+
+        .submit-success-top {
+            align-items: flex-start;
+            padding: 20px 18px 12px;
+        }
+
+        .submit-success-icon {
+            width: 54px;
+            height: 54px;
+            min-width: 54px;
+            font-size: 24px;
+        }
+
+        .submit-success-title {
+            font-size: 20px;
+        }
+
+        .submit-success-subtitle {
+            font-size: 13px;
+        }
+
+        .submit-success-body {
+            padding: 16px 18px 20px;
+        }
+
+        .success-text {
+            font-size: 15px;
+            padding: 14px 15px;
+        }
+
+        .submit-success-actions {
+            justify-content: stretch;
+        }
+
+        .submit-ok-btn {
+            width: 100%;
+            min-width: 0;
+        }
     }
 </style>
