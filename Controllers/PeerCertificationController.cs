@@ -4,7 +4,6 @@ using HIVTraining_Vue.Data;
 using HIVTraining_Vue.Server.Models;
 using System;
 using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
@@ -28,6 +27,14 @@ namespace HIVTraining_Vue.Server.Controllers
         private readonly BlobContainerClient _container;
 
         private bool _containerReady = false;
+
+        private static readonly Dictionary<int, int> PeerExamCourseMap = new()
+{
+    { 1010, 2001 }, 
+    { 1005, 2002 },
+    { 1003, 2003 },
+    { 5,    2004 }
+};
 
         private async Task EnsureContainerAsync()
         {
@@ -185,6 +192,224 @@ namespace HIVTraining_Vue.Server.Controllers
 
             // Range enabled helps PDF viewers (seeking / fast load)
             return PhysicalFile(path, "application/pdf", enableRangeProcessing: true);
+        }
+
+        [HttpGet("exams")]
+        public async Task<IActionResult> GetPeerExams()
+        {
+            var titles = new[]
+            {
+        "HIV Peer Certification Exam",
+        "HCV Peer Certification Exam",
+        "Harm Reduction Peer Certification Exam",
+        "PrEP Peer Certification Exam"
+    };
+
+            var rows = await _context.Subjects
+                .AsNoTracking()
+                .Where(s => s.Active
+                    && s.IsOnlineTraining
+                    && s.VideoUrl != null
+                    && titles.Contains(s.CourseTitle))
+                .Select(s => new
+                {
+                    subjectSysId = s.SubjectSysId,
+                    title = s.CourseTitle,
+                    videoUrl = s.VideoUrl
+                })
+                .ToListAsync();
+
+            return Ok(rows);
+        }
+
+        [HttpGet("exam-courses/{userId:guid}")]
+        public async Task<IActionResult> GetExamCourses(Guid userId, [FromQuery] string subjectIds)
+        {
+            var user = await _context.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.UserId == userId);
+
+            if (user == null)
+                return NotFound(new { message = "User not found" });
+
+            var ids = (subjectIds ?? "")
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => int.TryParse(x.Trim(), out var n) ? n : 0)
+                .Where(x => x > 0)
+                .Distinct()
+                .ToList();
+
+            if (!ids.Any())
+                return Ok(Array.Empty<object>());
+
+            var subjects = await _context.Subjects
+                .AsNoTracking()
+                .Where(s => ids.Contains(s.SubjectSysId) && s.Active)
+                .Select(s => new
+                {
+                    s.SubjectSysId,
+                    s.CourseTitle,
+                    s.Description,
+                    s.VideoUrl
+                })
+                .ToListAsync();
+
+            var result = new List<object>();
+
+            foreach (var s in subjects.OrderBy(x => ids.IndexOf(x.SubjectSysId)))
+            {
+                var mappedCourseSysId = PeerExamCourseMap.ContainsKey(s.SubjectSysId)
+                    ? PeerExamCourseMap[s.SubjectSysId]
+                    : 0;
+
+                var latestSession = await _context.ScormAiccSessions
+                    .AsNoTracking()
+                    .Where(x => x.Userid == user.UserSysId && x.Scormid == mappedCourseSysId)
+                    .OrderByDescending(x => x.Attempt)
+                    .ThenByDescending(x => x.Timemodified)
+                    .FirstOrDefaultAsync();
+
+                bool completed = false;
+                int percent = 0;
+
+                if (latestSession != null)
+                {
+                    completed =
+                        string.Equals(latestSession.Scormstatus, "completed", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(latestSession.Lessonstatus, "completed", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(latestSession.Lessonstatus, "passed", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(latestSession.Lessonstatus, "failed", StringComparison.OrdinalIgnoreCase);
+
+                    if (completed)
+                    {
+                        percent = 100;
+                    }
+                    else
+                    {
+                        var progressTrack = await _context.ScormScoesTracks
+                            .AsNoTracking()
+                            .Where(t =>
+                                t.Userid == user.UserSysId &&
+                                t.Scormid == mappedCourseSysId &&
+                                t.Attempt == latestSession.Attempt &&
+                                t.Element == "cmi.progress_measure")
+                            .OrderByDescending(t => t.Timemodified)
+                            .FirstOrDefaultAsync();
+
+                        if (progressTrack != null &&
+                            double.TryParse(progressTrack.Value, System.Globalization.NumberStyles.Any,
+                                System.Globalization.CultureInfo.InvariantCulture, out var progress))
+                        {
+                            percent = (int)Math.Round(progress * 100.0);
+                        }
+                        else
+                        {
+                            var locationTrack = await _context.ScormScoesTracks
+                                .AsNoTracking()
+                                .Where(t =>
+                                    t.Userid == user.UserSysId &&
+                                    t.Scormid == mappedCourseSysId &&
+                                    t.Attempt == latestSession.Attempt &&
+                                    t.Element == "cmi.core.lesson_location")
+                                .OrderByDescending(t => t.Timemodified)
+                                .FirstOrDefaultAsync();
+
+                            if (locationTrack != null &&
+                                int.TryParse(locationTrack.Value, out var bookmarkPercent))
+                            {
+                                percent = Math.Max(0, Math.Min(100, bookmarkPercent));
+                            }
+                        }
+                    }
+                }
+
+                result.Add(new
+                {
+                    subjectSysId = s.SubjectSysId,
+                    courseSysId = mappedCourseSysId,
+                    courseTitle = s.CourseTitle,
+                    description = s.Description,
+                    videoUrl = s.VideoUrl,
+                    scormId = mappedCourseSysId,
+                    scoId = "",
+                    completed,
+                    percent
+                });
+            }
+
+            return Ok(result);
+        }
+        [HttpPost("register-exam-course")]
+        public async Task<IActionResult> RegisterExamCourse([FromBody] JsonElement body)
+        {
+            try
+            {
+                if (!body.TryGetProperty("userId", out var userIdEl))
+                    return BadRequest(new { message = "Missing userId" });
+
+                if (!Guid.TryParse(userIdEl.GetString(), out var userGuid))
+                    return BadRequest(new { message = "Invalid userId" });
+
+                if (!body.TryGetProperty("courseSysId", out var courseEl))
+                    return BadRequest(new { message = "Missing courseSysId" });
+
+                var courseSysId = courseEl.GetInt32();
+                if (courseSysId <= 0)
+                    return BadRequest(new { message = "Invalid courseSysId" });
+
+                var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == userGuid);
+                if (user == null)
+                    return NotFound(new { message = "User not found" });
+
+                var course = await _context.Courses.FirstOrDefaultAsync(c => c.CourseSysId == courseSysId);
+                if (course == null)
+                    return NotFound(new { message = "Course not found" });
+
+                var existing = await _context.UserCourses
+                    .FirstOrDefaultAsync(uc =>
+                        uc.UserSysId == user.UserSysId &&
+                        uc.CourseSysId == courseSysId &&
+                        uc.Status == 1);
+
+                if (existing != null)
+                {
+                    return Ok(new
+                    {
+                        message = "Already registered.",
+                        alreadyRegistered = true
+                    });
+                }
+
+                var userCourse = new UserCourse
+                {
+                    UserSysId = user.UserSysId,
+                    CourseSysId = courseSysId,
+                    Status = 1,
+                    DateEntered = DateTime.UtcNow,
+                    DateStatusChanged = DateTime.UtcNow,
+                    DateModified = DateTime.UtcNow,
+                    Token = Guid.NewGuid(),
+                    IsWaitlisted = false,
+                    WaitlistNumber = null
+                };
+
+                _context.UserCourses.Add(userCourse);
+                await _context.SaveChangesAsync();
+
+                return Ok(new
+                {
+                    message = "Exam course registered successfully.",
+                    alreadyRegistered = false
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    message = "Failed to register exam course.",
+                    detail = ex.Message
+                });
+            }
         }
 
         [HttpPost("ethics/{userId:guid}")]
@@ -465,8 +690,7 @@ namespace HIVTraining_Vue.Server.Controllers
                 {
                     UserSysId = user.UserSysId,
                     DateCreate = DateTime.UtcNow,
-                    Active = true,
-
+                    Active = null,
                     RequiredCourses = false,
                     DisapprvEmailSent = false,
 
@@ -540,11 +764,203 @@ namespace HIVTraining_Vue.Server.Controllers
             }
 
             peer.DateModify = DateTime.UtcNow;
-            peer.Active = true;
+            //peer.Active = true;
 
             await _context.SaveChangesAsync();
 
             return await GetApplicantInfo(userId);
+        }
+        [HttpGet("track/{userId:guid}")]
+        public async Task<IActionResult> TrackApplications(Guid userId)
+        {
+            var user = await _context.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.UserId == userId);
+
+            if (user == null)
+                return NotFound("User not found.");
+
+            var peers = await _context.PeerUsers
+                .AsNoTracking()
+                .Where(p => p.UserSysId == user.UserSysId)
+                .OrderByDescending(p => p.DateCreate)
+                .ToListAsync();
+
+            if (!peers.Any())
+                return Ok(new List<object>());
+
+            var requiredDocIds = new[] { 2, 3, 7 };
+            var requiredScormIds = PeerExamCourseMap.Values.ToList();
+
+            var results = new List<object>();
+
+            foreach (var peer in peers)
+            {
+                var certificationTrack =
+                    peer.CertHiv == true ? "HIV" :
+                    peer.CertHcv == true ? "HCV" :
+                    peer.CertHr == true ? "Harm Reduction" :
+                    peer.CertPrep == true ? "PrEP" :
+                    peer.CertCriminalJustice == true ? "Criminal Justice" :
+                    "";
+
+                var uploadedRequiredDocs = await _context.PeerDocs
+                    .AsNoTracking()
+                    .Where(d => d.PeerSysId == peer.PeerSysId && d.Active == true && requiredDocIds.Contains(d.PeerDocId))
+                    .Select(d => d.PeerDocId)
+                    .Distinct()
+                    .CountAsync();
+
+                var sessions = await _context.ScormAiccSessions
+                    .AsNoTracking()
+                    .Where(x => x.Userid == user.UserSysId && requiredScormIds.Contains(x.Scormid))
+                    .GroupBy(x => x.Scormid)
+                    .Select(g => g
+                        .OrderByDescending(x => x.Attempt)
+                        .ThenByDescending(x => x.Timemodified)
+                        .FirstOrDefault())
+                    .ToListAsync();
+
+                var completedExamCount = sessions
+                    .Where(s => s != null &&
+                        (
+                            string.Equals(s.Scormstatus, "completed", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(s.Lessonstatus, "completed", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(s.Lessonstatus, "passed", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(s.Lessonstatus, "failed", StringComparison.OrdinalIgnoreCase)
+                        ))
+                    .Select(s => s.Scormid)
+                    .Distinct()
+                    .Count();
+
+                string appStatus;
+                if (peer.Approve == true)
+                    appStatus = "Approved";
+                else if (peer.DisapprvEmailSent == true)
+                    appStatus = "Disapproved";
+                else
+                    appStatus = "Pending";
+
+                results.Add(new
+                {
+                    peerSysId = peer.PeerSysId,
+                    certificationTrack,
+                    applicationStatus = appStatus,
+                    active = peer.Active == true,
+                    approved = peer.Approve == true,
+                    submittedOn = peer.DateCreate,
+                    lastUpdated = peer.DateModify,
+                    requiredCoursesConfirmed = peer.RequiredCourses == true,
+                    selfCareCompleted = peer.SelfCare == true,
+                    practicumCompleted = peer.ComplPracticum == true,
+                    practicumMin500 = peer.ComplPracticumMin == true,
+                    uploadedRequiredDocs,
+                    totalRequiredDocs = requiredDocIds.Length,
+                    requiredUploadsComplete = uploadedRequiredDocs == requiredDocIds.Length,
+                    completedExamCount,
+                    totalExamCount = requiredScormIds.Count
+                });
+            }
+
+            return Ok(results);
+        }
+
+        [HttpPost("submit/{userId:guid}")]
+        public async Task<IActionResult> SubmitApplication(Guid userId)
+        {
+            var user = await _context.Users
+                .FirstOrDefaultAsync(u => u.UserId == userId);
+
+            if (user == null)
+                return NotFound(new { message = "User not found" });
+
+            var peer = await _context.PeerUsers
+                .FirstOrDefaultAsync(p => p.UserSysId == user.UserSysId);
+
+            if (peer == null)
+                return BadRequest(new { message = "Peer application not found. Please complete Step 1 first." });
+
+            // required step 5 docs
+            var requiredDocIds = new[] { 2, 3, 7 };
+
+            var uploadedRequiredDocs = await _context.PeerDocs
+                .AsNoTracking()
+                .Where(d => d.PeerSysId == peer.PeerSysId && d.Active == true && requiredDocIds.Contains(d.PeerDocId))
+                .Select(d => d.PeerDocId)
+                .Distinct()
+                .ToListAsync();
+
+            var missingDocs = requiredDocIds.Except(uploadedRequiredDocs).ToList();
+            if (missingDocs.Any())
+                return BadRequest(new { message = "Please complete all required uploads before submitting." });
+
+            // validate step fields quickly
+            if (string.IsNullOrWhiteSpace(peer.ExperienceCommitment) || peer.ExperienceCommitment.Trim().Length < 500 ||
+                string.IsNullOrWhiteSpace(peer.ExperienceChallenges) || peer.ExperienceChallenges.Trim().Length < 500 ||
+                string.IsNullOrWhiteSpace(peer.ExperienceWhy) || peer.ExperienceWhy.Trim().Length < 500)
+            {
+                return BadRequest(new { message = "Step 2 is incomplete." });
+            }
+
+            if (peer.RequiredCourses != true)
+                return BadRequest(new { message = "Step 3 is incomplete." });
+
+            if (string.IsNullOrWhiteSpace(peer.SupvrOrgName) ||
+                string.IsNullOrWhiteSpace(peer.SupvrFirstName) ||
+                string.IsNullOrWhiteSpace(peer.SupvrLastName) ||
+                string.IsNullOrWhiteSpace(peer.SupvrContAddr1) ||
+                string.IsNullOrWhiteSpace(peer.SupvrContPhone) ||
+                string.IsNullOrWhiteSpace(peer.SupvrContEmail))
+            {
+                return BadRequest(new { message = "Step 4 is incomplete." });
+            }
+
+            if (peer.ComplPracticum == true)
+            {
+                if (peer.ComplPracticumMin != true || peer.PracticumBdate == null || peer.PracticumEdate == null)
+                    return BadRequest(new { message = "Practicum details are incomplete." });
+            }
+
+            // validate 4 exam completions
+            var requiredSubjectIds = PeerExamCourseMap.Keys.ToList();
+            var requiredScormIds = PeerExamCourseMap.Values.ToList();
+
+            var sessions = await _context.ScormAiccSessions
+                .AsNoTracking()
+                .Where(x => x.Userid == user.UserSysId && requiredScormIds.Contains(x.Scormid))
+                .GroupBy(x => x.Scormid)
+                .Select(g => g
+                    .OrderByDescending(x => x.Attempt)
+                    .ThenByDescending(x => x.Timemodified)
+                    .FirstOrDefault())
+                .ToListAsync();
+
+            var completedScormIds = sessions
+                .Where(s => s != null &&
+                    (
+                        string.Equals(s.Scormstatus, "completed", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(s.Lessonstatus, "completed", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(s.Lessonstatus, "passed", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(s.Lessonstatus, "failed", StringComparison.OrdinalIgnoreCase)
+                    ))
+                .Select(s => s.Scormid)
+                .Distinct()
+                .ToList();
+
+            if (completedScormIds.Count != requiredScormIds.Count)
+                return BadRequest(new { message = "Please complete all 4 certification exams before submitting." });
+
+            // FINAL SUCCESS: activate only here
+            peer.Active = true;
+            peer.DateModify = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                message = "Peer certification application submitted successfully.",
+                active = peer.Active
+            });
         }
 
         [HttpGet("uploads/{userId:guid}")]
