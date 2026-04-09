@@ -156,20 +156,47 @@
                             <div v-if="errors.Title" class="error-text">{{ errors.Title }}</div>
                         </div>
 
-                        <div class="field">
+                        <div class="field span-2">
                             <label>Certification Track *</label>
-                            <select v-model="form.CertificationTrack"
-                                    :disabled="locked.CertificationTrack"
-                                    :class="{ error: errors.CertificationTrack }">
-                                <option value="">-- Select --</option>
-                                <option value="HIV">HIV Peer Worker</option>
-                                <option value="HCV">HCV Peer Worker</option>
-                                <option value="HR">Harm Reduction Peer Worker</option>
-                                <option value="PREP">PrEP Peer Worker</option>
-                                <option value="CJ">Criminal Justice Peer Worker</option>
-                            </select>
+
+                            <div class="track-multi" :class="{ error: errors.CertificationTrack }">
+                                <label class="track-option" :class="{ disabled: isHivDisabled }">
+                                    <input type="checkbox"
+                                           value="HIV"
+                                           v-model="form.CertificationTrack"
+                                           :disabled="isHivDisabled && !form.CertificationTrack.includes('HIV')" />
+                                    <span>HIV Peer Worker</span>
+                                </label>
+
+                                <label class="track-option">
+                                    <input type="checkbox" value="HCV" v-model="form.CertificationTrack" />
+                                    <span>HCV Peer Worker</span>
+                                </label>
+
+                                <label class="track-option">
+                                    <input type="checkbox" value="HR" v-model="form.CertificationTrack" />
+                                    <span>Harm Reduction Peer Worker</span>
+                                </label>
+
+                                <label class="track-option" :class="{ disabled: isPrepDisabled }">
+                                    <input type="checkbox"
+                                           value="PREP"
+                                           v-model="form.CertificationTrack"
+                                           :disabled="isPrepDisabled && !form.CertificationTrack.includes('PREP')" />
+                                    <span>PrEP Peer Worker</span>
+                                </label>
+
+                                <label class="track-option">
+                                    <input type="checkbox" value="CJ" v-model="form.CertificationTrack" />
+                                    <span>Criminal Justice Peer Worker</span>
+                                </label>
+                            </div>
+
                             <div v-if="errors.CertificationTrack" class="error-text">
                                 {{ errors.CertificationTrack }}
+                            </div>
+                            <div v-if="trackConflictMessage" class="error-text">
+                                {{ trackConflictMessage }}
                             </div>
                         </div>
 
@@ -723,8 +750,8 @@
                             </p>
                         </div>
 
-                        <div class="exam-summary-pill" :class="{ ready: allExamCoursesCompleted }">
-                            {{ completedExamCount }} / {{ examItems.length }} Completed
+                        <div class="exam-summary-pill" :class="{ ready: allMandatoryExamCoursesCompleted }">
+                            {{ completedMandatoryExamCount }} / {{ mandatoryExamItems.length }} Mandatory Completed
                         </div>
                     </div>
 
@@ -741,47 +768,101 @@
                     </div>
 
                     <template v-else>
-                        <div v-if="!showScormPlayer" class="exam-grid">
-                            <div v-for="exam in examItems"
-                                 :key="exam.subjectSysId"
-                                 class="exam-card"
-                                 :class="{ completed: isExamCompleted(exam) }">
+                        <div v-if="!showScormPlayer">
+                            <div class="exam-section" v-if="mandatoryExamItems.length">
+                                <h4 class="exam-section-title">Mandatory Exams</h4>
+                                <div class="exam-grid">
+                                    <div v-for="exam in mandatoryExamItems"
+                                         :key="`mandatory_${exam.subjectSysId}`"
+                                         class="exam-card exam-card-mandatory"
+                                         :class="{ completed: isExamCompleted(exam) }">
 
-                                <div class="exam-card-top">
-                                    <div>
-                                        <div class="exam-badge">
-                                            {{ isExamCompleted(exam) ? "Completed" : "Pending" }}
+                                        <div class="exam-card-top">
+                                            <div>
+                                                <div class="exam-badge">
+                                                    {{ isExamCompleted(exam) ? "Completed" : "Mandatory" }}
+                                                </div>
+
+                                                <h4>{{ exam.courseTitle }}</h4>
+
+                                                <p class="exam-desc">
+                                                    {{ exam.description || "Launch this SCORM exam and complete all required content." }}
+                                                </p>
+                                            </div>
                                         </div>
 
-                                        <h4>{{ exam.courseTitle }}</h4>
+                                        <div class="exam-progress-row">
+                                            <div class="exam-progress-meta">
+                                                <span>Progress</span>
+                                                <strong>{{ getExamPercent(exam) }}%</strong>
+                                            </div>
 
-                                        <p class="exam-desc">
-                                            {{ exam.description || "Launch this SCORM exam and complete all required content." }}
-                                        </p>
+                                            <div class="exam-progress-bar">
+                                                <div class="exam-progress-fill" :style="{ width: `${getExamPercent(exam)}%` }"></div>
+                                            </div>
+                                        </div>
+
+                                        <div class="exam-card-footer">
+                                            <button class="btn btn-primary"
+                                                    type="button"
+                                                    @click="launchExam(exam)"
+                                                    :disabled="!exam.videoUrl">
+                                                {{ isExamCompleted(exam) ? "Reopen Exam" : "Launch Exam" }}
+                                            </button>
+
+                                            <div class="exam-status-text" :class="{ ok: isExamCompleted(exam) }">
+                                                {{ isExamCompleted(exam) ? "Required exam completed" : "Required for submission" }}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
+                            </div>
 
-                                <div class="exam-progress-row">
-                                    <div class="exam-progress-meta">
-                                        <span>Progress</span>
-                                        <strong>{{ getExamPercent(exam) }}%</strong>
-                                    </div>
+                            <div class="exam-section" v-if="optionalExamItems.length">
+                                <h4 class="exam-section-title">Optional Exams</h4>
+                                <div class="exam-grid">
+                                    <div v-for="exam in optionalExamItems"
+                                         :key="`optional_${exam.subjectSysId}`"
+                                         class="exam-card exam-card-optional"
+                                         :class="{ completed: isExamCompleted(exam) }">
 
-                                    <div class="exam-progress-bar">
-                                        <div class="exam-progress-fill" :style="{ width: `${getExamPercent(exam)}%` }"></div>
-                                    </div>
-                                </div>
+                                        <div class="exam-card-top">
+                                            <div>
+                                                <div class="exam-badge">
+                                                    {{ isExamCompleted(exam) ? "Completed" : "Optional" }}
+                                                </div>
 
-                                <div class="exam-card-footer">
-                                    <button class="btn btn-primary"
-                                            type="button"
-                                            @click="launchExam(exam)"
-                                            :disabled="!exam.videoUrl">
-                                        {{ isExamCompleted(exam) ? "Reopen Exam" : "Launch Exam" }}
-                                    </button>
+                                                <h4>{{ exam.courseTitle }}</h4>
 
-                                    <div class="exam-status-text" :class="{ ok: isExamCompleted(exam) }">
-                                        {{ isExamCompleted(exam) ? "Ready for submission" : "Completion required" }}
+                                                <p class="exam-desc">
+                                                    {{ exam.description || "You may complete this additional SCORM exam if needed." }}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div class="exam-progress-row">
+                                            <div class="exam-progress-meta">
+                                                <span>Progress</span>
+                                                <strong>{{ getExamPercent(exam) }}%</strong>
+                                            </div>
+
+                                            <div class="exam-progress-bar">
+                                                <div class="exam-progress-fill" :style="{ width: `${getExamPercent(exam)}%` }"></div>
+                                            </div>
+                                        </div>
+
+                                        <div class="exam-card-footer">
+                                            <button class="btn btn-secondary"
+                                                    type="button"
+                                                    @click="launchExam(exam)"
+                                                    :disabled="!exam.videoUrl">
+                                                {{ isExamCompleted(exam) ? "Reopen Exam" : "Launch Exam" }}
+                                            </button>
+
+                                            <div class="exam-status-text" :class="{ ok: isExamCompleted(exam) }">
+                                                {{ isExamCompleted(exam) ? "Optional exam completed" : "Not required for submission" }}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -809,12 +890,12 @@
                                          @exit="handleScormExit" />
                         </div>
 
-                        <div class="exam-bottom-note" :class="{ ready: allExamCoursesCompleted }">
-                            <strong v-if="allExamCoursesCompleted">
-                                All exam courses are complete. You can now submit your application.
+                        <div class="exam-bottom-note" :class="{ ready: allMandatoryExamCoursesCompleted }">
+                            <strong v-if="allMandatoryExamCoursesCompleted">
+                                All mandatory exam courses are complete. You can now submit your application.
                             </strong>
                             <strong v-else>
-                                You must complete all {{ examItems.length }} exam courses before submitting.
+                                You must complete all mandatory exam courses for your selected certification track(s) before submitting.
                             </strong>
                         </div>
                     </template>
@@ -976,7 +1057,7 @@ import ScormPlayer from "@/components/ScormPlayer.vue";
                     Adadetails: "",
 
                     // PeerUser only:
-                    CertificationTrack: "",
+                    CertificationTrack: [],
                     AgencyAffilation: "",
                     Dob: null,
                     Gender: null,
@@ -1054,9 +1135,50 @@ import ScormPlayer from "@/components/ScormPlayer.vue";
             whyLen() {
                 return (this.form.ExperienceWhy || "").trim().length;
             },
+            trackConflictMessage() {
+    const tracks = (this.form.CertificationTrack || []).map(x => String(x).trim().toUpperCase());
+    if (tracks.includes("HIV") && tracks.includes("PREP")) {
+        return "HIV and PrEP certification tracks cannot be selected together.";
+    }
+    return "";
+},
+
+isPrepDisabled() {
+    const tracks = (this.form.CertificationTrack || []).map(x => String(x).trim().toUpperCase());
+    return tracks.includes("HIV");
+},
+
+isHivDisabled() {
+    const tracks = (this.form.CertificationTrack || []).map(x => String(x).trim().toUpperCase());
+    return tracks.includes("PREP");
+},
             requiredDocTypesNonEthics() {
                 return (this.docTypes || []).filter((d) => d.required === true && d.peerDocId !== 3);
             },
+            selectedTrackCodes() {
+    return (this.form.CertificationTrack || []).map(x => String(x).trim().toUpperCase());
+},
+
+mandatoryExamItems() {
+    return (this.examItems || []).filter(x =>
+        this.selectedTrackCodes.includes((x.trackCode || "").toUpperCase())
+    );
+},
+
+optionalExamItems() {
+    return (this.examItems || []).filter(x =>
+        !this.selectedTrackCodes.includes((x.trackCode || "").toUpperCase())
+    );
+},
+
+allMandatoryExamCoursesCompleted() {
+    if (!this.mandatoryExamItems.length) return true;
+    return this.mandatoryExamItems.every(x => this.isExamCompleted(x));
+},
+
+completedMandatoryExamCount() {
+    return this.mandatoryExamItems.filter(x => this.isExamCompleted(x)).length;
+},
             step2HasErrors() {
                 return (
                     this.currentStep === 2 &&
@@ -1084,12 +1206,7 @@ completedExamCount() {
         },
 
         methods: {
-            /* =========================================================
-             * ✅ ONE FIX FOR ALL FETCH CALLS
-             * - Always sends cookies/credentials reliably (include)
-             * - Prevents "HTML returned instead of JSON" surprises
-             * - Keeps your URLs the same style (/api/...)
-             * ========================================================= */
+            
             async apiFetch(url, options = {}) {
                 const fullUrl = url.startsWith("/api")
                     ? url
@@ -1119,6 +1236,98 @@ completedExamCount() {
                 }
 
                 return res;
+            },
+
+            isStep1CompleteForProgress() {
+                const selectedTracks = (this.form.CertificationTrack || [])
+                    .map(x => String(x).trim().toUpperCase());
+
+                return !!(
+                    this.form.FirstName?.trim() &&
+                    this.form.LastName?.trim() &&
+                    this.form.Address?.trim() &&
+                    this.form.City?.trim() &&
+                    this.form.State?.trim() &&
+                    this.form.Zip?.trim() &&
+                    this.form.Title?.trim() &&
+                    this.form.Ethnicity !== null &&
+                    this.form.Ethnicity !== undefined &&
+                    this.form.Race !== null &&
+                    this.form.Race !== undefined &&
+                    this.form.Education !== null &&
+                    this.form.Education !== undefined &&
+                    this.form.Dob &&
+                    this.form.Gender !== null &&
+                    this.form.Gender !== undefined &&
+                    selectedTracks.length > 0 &&
+                    !(selectedTracks.includes("HIV") && selectedTracks.includes("PREP"))
+                );
+            },
+
+            isStep2CompleteForProgress() {
+                return (
+                    (this.form.ExperienceCommitment || "").trim().length >= 500 &&
+                    (this.form.ExperienceChallenges || "").trim().length >= 500 &&
+                    (this.form.ExperienceWhy || "").trim().length >= 500
+                );
+            },
+
+            isStep3CompleteForProgress() {
+                return this.form.RequiredCourses === true;
+            },
+
+            isStep4CompleteForProgress() {
+                const hasBasics =
+                    !!this.form.SupvrOrgName?.trim() &&
+                    !!this.form.SupvrFirstName?.trim() &&
+                    !!this.form.SupvrLastName?.trim() &&
+                    !!this.form.SupvrContAddr1?.trim() &&
+                    !!this.form.SupvrContPhone?.trim() &&
+                    !!this.form.SupvrContEmail?.trim();
+
+                if (!hasBasics) return false;
+
+                if (this.form.ComplPracticum === true) {
+                    return (
+                        this.form.ComplPracticumMin === true &&
+                        !!this.form.PracticumBDate &&
+                        !!this.form.PracticumEDate
+                    );
+                }
+
+                return true;
+            },
+
+            isStep5CompleteForProgress() {
+                const requiredIds = (this.docTypes || [])
+                    .filter(x => x.required === true)
+                    .map(x => x.peerDocId);
+
+                return requiredIds.every(id => {
+                    if (id === 3) return this.ethics.signed === true;
+                    return this.docsForType(id).length > 0;
+                });
+            },
+
+            isStep6CompleteForProgress() {
+                return this.allMandatoryExamCoursesCompleted === true;
+            },
+
+            getApplicationPercentage() {
+                const completedSteps = [
+                    this.isStep1CompleteForProgress(),
+                    this.isStep2CompleteForProgress(),
+                    this.isStep3CompleteForProgress(),
+                    this.isStep4CompleteForProgress(),
+                    this.isStep5CompleteForProgress(),
+                    this.isStep6CompleteForProgress()
+                ].filter(Boolean).length;
+
+                const pct = Math.round((completedSteps / 6) * 100);
+
+                // Draft progress should never become 100.
+                // 100 is reserved only for successful final submission.
+                return Math.min(pct, 99);
             },
 
             handleSubmitSuccessOk() {
@@ -1208,7 +1417,7 @@ async loadExamCourses() {
     this.examsMessage = "";
 
     try {
-        const subjectIds = [1010, 1005, 1003, 5];
+        const subjectIds = [1010, 1005, 1003, 1007, 5];
 
         const res = await this.apiFetch(
             `/api/PeerCertification/exam-courses/${userId}?subjectIds=${subjectIds.join(",")}`,
@@ -1225,16 +1434,17 @@ async loadExamCourses() {
         const rows = Array.isArray(data) ? data : (data?.$values || []);
 
         this.examItems = rows.map(x => ({
-            subjectSysId: x.subjectSysId,
-            courseSysId: x.courseSysId,
-            courseTitle: x.courseTitle,
-            description: x.description,
-            videoUrl: x.videoUrl,
-            scormId: x.scormId ?? x.courseSysId ?? x.subjectSysId,
-            scoId: x.scoId ?? "",
-            completed: x.completed === true,
-            percent: Number(x.percent || 0)
-        }));
+    subjectSysId: x.subjectSysId,
+    courseSysId: x.courseSysId,
+    courseTitle: x.courseTitle,
+    description: x.description,
+    videoUrl: x.videoUrl,
+    scormId: x.scormId ?? x.courseSysId ?? x.subjectSysId,
+    scoId: x.scoId ?? "",
+    trackCode: (x.trackCode || "").toUpperCase(),
+    completed: x.completed === true,
+    percent: Number(x.percent || 0)
+}));
 
         const map = {};
         this.examItems.forEach(x => {
@@ -1373,10 +1583,10 @@ async refreshExamProgress() {
 validateStep6() {
     const e = { ...this.errors };
 
-    if (!this.examItems.length) {
-        e.Step6 = "No exam courses are configured.";
-    } else if (!this.allExamCoursesCompleted) {
-        e.Step6 = "Please complete all exam courses to 100% before submitting.";
+    if (!this.mandatoryExamItems.length) {
+        e.Step6 = "No mandatory exam courses are configured for the selected certification track.";
+    } else if (!this.allMandatoryExamCoursesCompleted) {
+        e.Step6 = "Please complete all mandatory exam courses before submitting.";
     } else {
         delete e.Step6;
     }
@@ -1815,8 +2025,13 @@ validateStep6() {
                 reqSelect("Ethnicity", "Ethnicity");
                 reqSelect("Race", "Race");
                 reqSelect("Education", "Education");
-                reqSelect("CertificationTrack", "Certification Track");
-                reqSelect("Dob", "Date of Birth");
+const selectedTracks = (this.form.CertificationTrack || []).map(x => String(x).trim().toUpperCase());
+
+if (!Array.isArray(this.form.CertificationTrack) || this.form.CertificationTrack.length === 0) {
+    e.CertificationTrack = "Please select at least one Certification Track.";
+} else if (selectedTracks.includes("HIV") && selectedTracks.includes("PREP")) {
+    e.CertificationTrack = "HIV and PrEP certification tracks cannot be selected together.";
+}               reqSelect("Dob", "Date of Birth");
                 reqSelect("Gender", "Gender");
 
                 this.errors = e;
@@ -1824,145 +2039,167 @@ validateStep6() {
             },
 
             async loadApplicantInfo() {
-                const id = this.getUserGuid();
-                if (!id) {
-                    this.showLogin = true;
-                    this.saveMessage = "Please login to continue.";
-                    return;
-                }
+    const id = this.getUserGuid();
+    if (!id) {
+        this.showLogin = true;
+        this.saveMessage = "Please login to continue.";
+        return;
+    }
 
-                this.loading = true;
-                this.saveMessage = "";
-                this.errors = {};
+    this.loading = true;
+    this.saveMessage = "";
+    this.errors = {};
 
-                try {
-                    const res = await this.apiFetch(`/api/PeerCertification/applicant-info/${id}`, {
-                        method: "GET",
-                    });
+    try {
+        const res = await this.apiFetch(`/api/PeerCertification/applicant-info/${id}`, {
+            method: "GET",
+        });
 
-                    if (res.status === 401) {
-                        this.showLogin = true;
-                        this.saveMessage = "Session expired. Please login again.";
-                        return;
-                    }
-                    if (!res.ok) {
-                        this.saveMessage = `Load failed: ${await res.text()}`;
-                        return;
-                    }
+        if (res.status === 401) {
+            this.showLogin = true;
+            this.saveMessage = "Session expired. Please login again.";
+            return;
+        }
+        if (!res.ok) {
+            this.saveMessage = `Load failed: ${await res.text()}`;
+            return;
+        }
 
-                    const data = await res.json();
+        const data = await res.json();
 
-                    const toCamel = (s) => (s ? s.charAt(0).toLowerCase() + s.slice(1) : s);
-                    const toPascal = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+        const toCamel = (s) => (s ? s.charAt(0).toLowerCase() + s.slice(1) : s);
+        const toPascal = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
-                    const pick = (obj, ...keys) => {
-                        for (const k of keys) {
-                            if (obj && obj[k] !== undefined && obj[k] !== null) return obj[k];
-                        }
-                        return undefined;
-                    };
+        const pick = (obj, ...keys) => {
+            for (const k of keys) {
+                if (obj && obj[k] !== undefined && obj[k] !== null) return obj[k];
+            }
+            return undefined;
+        };
 
-                    const map = {
-                        FirstName: "firstName",
-                        Mi: "mi",
-                        LastName: "lastName",
-                        Email: "email",
-                        AltEmail: "altEmail",
-                        Phone: "phone",
-                        AltPhone: "altPhone",
-                        CellPhone: "cellPhone",
-                        WorkPhone: "workPhone",
-                        WorkPhoneExt: "workPhoneExt",
-                        PrimaryCanText: "primaryCanText",
-                        AltCanText: "altCanText",
-                        Address: "address",
-                        City: "city",
-                        State: "state",
-                        Zip: "zip",
-                        Country: "country",
-                        Title: "title",
-                        Organization: "organization",
-                        WorkSetting: "workSetting",
-                        Education: "education",
-                        Ethnicity: "ethnicity",
-                        Race: "race",
-                        Occupation: "occupation",
-                        YearsCurrentOccupation: "yearsCurrentOccupation",
-                        PronounId: "pronounId",
-                        WorkLocationId: "workLocationId",
-                        Adaneed: "adaneed",
-                        Adadetails: "adadetails",
-                        Dob: "dob",
-                        Gender: "gender",
-                        AgencyAffilation: "agencyAffilation",
-                        CertificationTrack: "certificationTrack",
+        const map = {
+            FirstName: "firstName",
+            Mi: "mi",
+            LastName: "lastName",
+            Email: "email",
+            AltEmail: "altEmail",
+            Phone: "phone",
+            AltPhone: "altPhone",
+            CellPhone: "cellPhone",
+            WorkPhone: "workPhone",
+            WorkPhoneExt: "workPhoneExt",
+            PrimaryCanText: "primaryCanText",
+            AltCanText: "altCanText",
+            Address: "address",
+            City: "city",
+            State: "state",
+            Zip: "zip",
+            Country: "country",
+            Title: "title",
+            Organization: "organization",
+            WorkSetting: "workSetting",
+            Education: "education",
+            Ethnicity: "ethnicity",
+            Race: "race",
+            Occupation: "occupation",
+            YearsCurrentOccupation: "yearsCurrentOccupation",
+            PronounId: "pronounId",
+            WorkLocationId: "workLocationId",
+            Adaneed: "adaneed",
+            Adadetails: "adadetails",
+            Dob: "dob",
+            Gender: "gender",
+            AgencyAffilation: "agencyAffilation",
 
-                        ExperienceCommitment: "experienceCommitment",
-                        ExperienceChallenges: "experienceChallenges",
-                        ExperienceWhy: "experienceWhy",
-                        SelfCare: "selfCare",
-                        RequiredCourses: "requiredCourses",
+            ExperienceCommitment: "experienceCommitment",
+            ExperienceChallenges: "experienceChallenges",
+            ExperienceWhy: "experienceWhy",
+            SelfCare: "selfCare",
+            RequiredCourses: "requiredCourses",
+            ApplicationPercentage: "applicationPercentage",
 
-                        SupvrOrgName: "supvrOrgName",
-                        SupvrFirstName: "supvrFirstName",
-                        SupvrLastName: "supvrLastName",
-                        SupvrContAddr1: "supvrContAddr1",
-                        SupvrContAddr2: "supvrContAddr2",
-                        SupvrContPhone: "supvrContPhone",
-                        SupvrContEmail: "supvrContEmail",
-                        ComplPracticum: "complPracticum",
-                        ComplPracticumMin: "complPracticumMin",
-                        PracticumBDate: "practicumBDate",
-                        PracticumEDate: "practicumEDate",
-                    };
+            SupvrOrgName: "supvrOrgName",
+            SupvrFirstName: "supvrFirstName",
+            SupvrLastName: "supvrLastName",
+            SupvrContAddr1: "supvrContAddr1",
+            SupvrContAddr2: "supvrContAddr2",
+            SupvrContPhone: "supvrContPhone",
+            SupvrContEmail: "supvrContEmail",
+            ComplPracticum: "complPracticum",
+            ComplPracticumMin: "complPracticumMin",
+            PracticumBDate: "practicumBDate",
+            PracticumEDate: "practicumEDate",
+        };
 
-                    Object.keys(this.form).forEach((k) => {
-                        const apiKeyFromMap = map[k];
-                        const camelFromForm = toCamel(k);
-                        const pascalFromMap = apiKeyFromMap ? toPascal(apiKeyFromMap) : undefined;
+        Object.keys(this.form).forEach((k) => {
+            if (k === "CertificationTrack") return;
 
-                        const val = pick(data, apiKeyFromMap, camelFromForm, pascalFromMap, k);
-                        if (val !== undefined) this.form[k] = val;
-                    });
+            const apiKeyFromMap = map[k];
+            const camelFromForm = toCamel(k);
+            const pascalFromMap = apiKeyFromMap ? toPascal(apiKeyFromMap) : undefined;
 
-                    const toDateOnly = (v) => (v ? String(v).slice(0, 10) : null);
-                    this.form.PracticumBDate = toDateOnly(this.form.PracticumBDate);
-                    this.form.PracticumEDate = toDateOnly(this.form.PracticumEDate);
+            const val = pick(data, apiKeyFromMap, camelFromForm, pascalFromMap, k);
+            if (val !== undefined) this.form[k] = val;
+        });
 
-                    const toBool = (v) => v === true || v === "true" || v === 1;
-                    this.form.ComplPracticum = toBool(this.form.ComplPracticum);
-                    this.form.ComplPracticumMin = toBool(this.form.ComplPracticumMin);
+        const rawTracks =
+    data.certificationTrack ??
+    data.CertificationTrack ??
+    [];
 
-                    if (data?.dob) {
-                        const d = new Date(data.dob);
-                        const yyyy = d.getFullYear();
-                        const mm = String(d.getMonth() + 1).padStart(2, "0");
-                        const dd = String(d.getDate()).padStart(2, "0");
-                        this.form.Dob = `${yyyy}-${mm}-${dd}`;
-                    }
+let normalizedTracks = [];
 
-                    if (!this.form.State || String(this.form.State).trim() === "") {
-                        this.form.State = "NY";
-                    }
+if (Array.isArray(rawTracks)) {
+    normalizedTracks = rawTracks;
+} else if (rawTracks && Array.isArray(rawTracks.$values)) {
+    normalizedTracks = rawTracks.$values;
+} else if (typeof rawTracks === "string" && rawTracks.trim()) {
+    normalizedTracks = [rawTracks];
+}
 
-                    const lockIfHasValue = (key) => {
-                        const v = this.form[key];
-                        if (v === null || v === undefined) return;
-                        if (typeof v === "string" && v.trim() === "") return;
-                        if (Object.prototype.hasOwnProperty.call(this.locked, key)) this.locked[key] = true;
-                    };
+this.form.CertificationTrack = normalizedTracks
+    .map(x => String(x).trim().toUpperCase())
+    .filter(Boolean);
+        const toDateOnly = (v) => (v ? String(v).slice(0, 10) : null);
+        this.form.PracticumBDate = toDateOnly(this.form.PracticumBDate);
+        this.form.PracticumEDate = toDateOnly(this.form.PracticumEDate);
 
-                    ["FirstName", "LastName"].forEach(lockIfHasValue);
-                } catch (e) {
-                    this.saveMessage = e?.message || "Load failed (network error).";
-                } finally {
-                    this.loading = false;
-                }
-            },
+        const toBool = (v) => v === true || v === "true" || v === 1;
+        this.form.ComplPracticum = toBool(this.form.ComplPracticum);
+        this.form.ComplPracticumMin = toBool(this.form.ComplPracticumMin);
+
+        if (data?.dob) {
+            const d = new Date(data.dob);
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, "0");
+            const dd = String(d.getDate()).padStart(2, "0");
+            this.form.Dob = `${yyyy}-${mm}-${dd}`;
+        }
+
+        if (!this.form.State || String(this.form.State).trim() === "") {
+            this.form.State = "NY";
+        }
+
+        const lockIfHasValue = (key) => {
+            const v = this.form[key];
+            if (v === null || v === undefined) return;
+            if (typeof v === "string" && v.trim() === "") return;
+            if (Object.prototype.hasOwnProperty.call(this.locked, key)) this.locked[key] = true;
+        };
+
+        ["FirstName", "LastName"].forEach(lockIfHasValue);
+    } catch (e) {
+        this.saveMessage = e?.message || "Load failed (network error).";
+    } finally {
+        this.loading = false;
+    }
+},
 
             buildPayloadForCurrentStep() {
-                const base = { CertificationTrack: this.form.CertificationTrack };
-
+                const base = {
+                    CertificationTrack: this.form.CertificationTrack,
+                    ApplicationPercentage: this.getApplicationPercentage()
+                };
                 if (this.currentStep === 1) {
                     return {
                         ...base,
@@ -2197,6 +2434,24 @@ validateStep6() {
         handler() {
             this.ensureStep5Loaded();
             this.ensureStep6Loaded();
+        },
+    },
+
+    "form.CertificationTrack": {
+        deep: true,
+        handler(newVal) {
+            const tracks = (newVal || []).map(x => String(x).trim().toUpperCase());
+
+            if (tracks.includes("HIV") && tracks.includes("PREP")) {
+                this.errors = {
+                    ...this.errors,
+                    CertificationTrack: "HIV and PrEP certification tracks cannot be selected together."
+                };
+            } else if (this.errors.CertificationTrack === "HIV and PrEP certification tracks cannot be selected together.") {
+                const updated = { ...this.errors };
+                delete updated.CertificationTrack;
+                this.errors = updated;
+            }
         },
     },
 },
@@ -3558,4 +3813,52 @@ validateStep6() {
             min-width: 0;
         }
     }
+    .track-multi {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 14px;
+        padding: 14px;
+        background: #fff;
+    }
+
+    .track-option {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 14px;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fafafa;
+        font-size: 14px;
+        font-weight: 700;
+        color: #111827;
+        cursor: pointer;
+    }
+
+        .track-option input {
+            width: 16px;
+            height: 16px;
+            accent-color: #43285d;
+        }
+
+    .track-multi.error {
+        border-color: #dc2626;
+    }
+
+    @media (max-width: 900px) {
+        .track-multi {
+            grid-template-columns: 1fr;
+        }
+    }
+    .track-option.disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+    }
+
+        .track-option.disabled input,
+        .track-option.disabled span {
+            cursor: not-allowed;
+        }
 </style>

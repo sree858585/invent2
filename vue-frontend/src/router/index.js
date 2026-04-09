@@ -18,11 +18,12 @@ import RoleManagement from "@/components/RoleManagement.vue";
 import TrainingCalendar from "@/components/TrainingCalendar.vue";
 import PeerCertificationApply from "@/components/PeerCertificationApply.vue";
 import HomeBannersAdmin from "@/components/HomeBannersAdmin.vue";
+import ManagePeer from "@/components/ManagePeer.vue";
+import ManageEduCredits from "@/components/ManageEduCredits.vue";
+import ManagePeerDetail from "@/components/ManagePeerDetail.vue";
 
-// ✅ NEW: Admin page for custom calendar events
 import CustomCalendarEventsAdmin from "@/components/CustomCalendarEventsAdmin.vue";
 
-// ✅ Route guard (Admin/Manager only)
 const requireAdminOrManager = (to, from, next) => {
     const isAuthenticated = !!localStorage.getItem("jwtToken");
     const role = localStorage.getItem("userRole"); // must exist
@@ -147,6 +148,31 @@ const routes = [
         path: "/training-calendar",
         name: "TrainingCalendar",
         component: TrainingCalendar,
+    },
+    {
+        path: "/peer-management/manage-peer",
+        name: "ManagePeer",
+        component: ManagePeer,
+        beforeEnter: requireAdminOrManager,
+    },
+    {
+        path: "/peer-management/manage-edu-credits",
+        name: "ManageEduCredits",
+        component: ManageEduCredits,
+        beforeEnter: requireAdminOrManager,
+    },
+    {
+        path: "/peer-management/manage-peer/:userId",
+        name: "ManagePeerDetail",
+        component: ManagePeerDetail,
+        props: true,
+        beforeEnter: requireAdminOrManager,
+    },
+
+    {
+        path: "/peer-certification/continuing-education",
+        name: "PeerContinuingEducation",
+        component: () => import("@/components/PeerContinuingEducation.vue")
     },
     {
         path: "/",

@@ -25,6 +25,13 @@
                     <button class="btn btn-outline" @click="openTrackModal">
                         Track My Application
                     </button>
+
+                    <button v-if="showContinuingEducationButton"
+                            class="btn btn-outline"
+                            @click="goToContinuingEducation">
+                        Continuing Education Credits
+                    </button>
+
                 </div>
             </div>
 
@@ -392,6 +399,8 @@
                 trackingLoading: false,
                 trackingError: "",
                 applicationTracks: [],
+                continuingEducationEligible: false,
+        checkingContinuingEducation: false,
                 links: {
                     faq: "https://www.hivtrainingny.org/FAQDocs/PeerCertificationFAQ2.pdf",
                     process: "https://www.hivtrainingny.org/User/ConfirmCourse/3627",
@@ -472,6 +481,10 @@
                 ];
             },
 
+            showContinuingEducationButton() {
+    return this.continuingEducationEligible === true;
+},
+
             certifiedResources() {
                 return [
                     {
@@ -538,6 +551,10 @@
             }
         },
 
+        mounted() {
+    this.checkContinuingEducationEligibility();
+},
+
         methods: {
             goToApply() {
                 this.$router.push("/peer-certification/apply");
@@ -569,7 +586,38 @@
                 if (data && Array.isArray(data.$values)) return data.$values;
                 return [];
             },
+            async checkContinuingEducationEligibility() {
+    const userId = this.getUserGuid();
 
+    if (!userId) {
+        this.continuingEducationEligible = false;
+        return;
+    }
+
+    this.checkingContinuingEducation = true;
+
+    try {
+        const res = await this.apiFetch(`/api/PeerCertification/continuing-education-eligibility/${userId}`, {
+            method: "GET"
+        });
+
+        if (!res.ok) {
+            this.continuingEducationEligible = false;
+            return;
+        }
+
+        const data = await res.json();
+        this.continuingEducationEligible = data?.eligible === true;
+    } catch {
+        this.continuingEducationEligible = false;
+    } finally {
+        this.checkingContinuingEducation = false;
+    }
+},
+
+goToContinuingEducation() {
+    this.$router.push("/peer-certification/continuing-education");
+},
             async openTrackModal() {
                 this.showTrackModal = true;
                 this.trackingLoading = true;

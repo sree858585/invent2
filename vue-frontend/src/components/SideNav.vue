@@ -112,8 +112,28 @@
                             <li><router-link to="/system/course-list">Course List</router-link></li>
                             <li><router-link to="/system/custom-calendar-events">Custom Calendar Events</router-link></li>
                             <li><router-link to="/system/home-banners">Home Page Banners</router-link></li>
+                        </ul>
+                    </li>
 
+                    <!-- ✅ PEER MANAGEMENT: Only for Admin/Manager -->
+                    <li v-if="isUserLoggedIn && isAdminOrManager">
+                        <div class="dropdown-header" @click="toggleSection('peerManagement')">
+                            <span class="icon">🎓</span>
+                            <span v-show="isExpanded">Peer Management</span>
+                            <span class="dropdown-arrow" :class="{ rotated: sections.peerManagement }">▼</span>
+                        </div>
 
+                        <ul v-if="sections.peerManagement && isExpanded" class="dropdown-menu">
+                            <li>
+                                <router-link to="/peer-management/manage-peer">
+                                    Manage Peer
+                                </router-link>
+                            </li>
+                            <li>
+                                <router-link to="/peer-management/manage-edu-credits">
+                                    Manage Educational Credits
+                                </router-link>
+                            </li>
                         </ul>
                     </li>
 
@@ -164,7 +184,9 @@
                     courses: false,
                     myCourses: false,
                     system: false,
-                    roles: false
+                    roles: false,
+                    peerManagement: false
+
 
 
                 },
