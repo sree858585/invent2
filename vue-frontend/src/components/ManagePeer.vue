@@ -184,7 +184,9 @@
     </div>
 </template>
 
-<script>let searchDebounceTimer = null;
+<script>
+    import apiClient from "@/axios";
+    let searchDebounceTimer = null;
 
     export default {
         name: "ManagePeer",
@@ -275,51 +277,47 @@
 },
 
             async fetchPeers() {
-                this.loading = true;
-                this.errorMessage = "";
+    this.loading = true;
+    this.errorMessage = "";
 
-                try {
-                    const params = new URLSearchParams({
-                        view: this.selectedView,
-                        page: this.currentPage,
-                        pageSize: this.pageSize
-                    });
+    try {
+        const params = new URLSearchParams({
+            view: this.selectedView,
+            page: this.currentPage,
+            pageSize: this.pageSize
+        });
 
-                    if (this.searchText && this.searchText.trim()) {
-                        params.append("search", this.searchText.trim());
-                    }
+        if (this.searchText && this.searchText.trim()) {
+            params.append("search", this.searchText.trim());
+        }
 
-                    const response = await fetch(`/api/PeerCertification/admin/manage-peer?${params.toString()}`, {
-                        credentials: "include",
-                        headers: {
-                            Accept: "application/json"
-                        }
-                    });
+        const response = await apiClient.get(
+            `/PeerCertification/admin/manage-peer?${params.toString()}`
+        );
 
-                    if (!response.ok) {
-                        const message = await response.text();
-                        throw new Error(message || "Failed to load applicant list.");
-                    }
+        const data = response.data;
+        const items = this.unwrapList(data.items);
 
-                    const data = await response.json();
+        this.peers = items.map(this.normalizePeerRow);
+        this.totalRecords = data.totalRecords || 0;
+        this.currentPage = data.page || 1;
+        this.pageSize = data.pageSize || 10;
 
-                    const items = this.unwrapList(data.items);
+        console.log("manage-peer api response:", data);
+        console.log("manage-peer items:", items);
+    } catch (error) {
+        this.errorMessage =
+            error?.response?.data?.message ||
+            error?.response?.data ||
+            error?.message ||
+            "Unable to load applicants.";
 
-                    this.peers = items.map(this.normalizePeerRow);
-                    this.totalRecords = data.totalRecords || 0;
-                    this.currentPage = data.page || 1;
-                    this.pageSize = data.pageSize || 10;
-
-                    console.log("manage-peer api response:", data);
-                    console.log("manage-peer items:", items);
-                } catch (error) {
-                    this.errorMessage = error?.message || "Unable to load applicants.";
-                    this.peers = [];
-                    this.totalRecords = 0;
-                } finally {
-                    this.loading = false;
-                }
-            },
+        this.peers = [];
+        this.totalRecords = 0;
+    } finally {
+        this.loading = false;
+    }
+},
 
             normalizePeerRow(row) {
                 return {
