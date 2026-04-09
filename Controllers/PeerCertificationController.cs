@@ -15,6 +15,9 @@ using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Microsoft.Extensions.Configuration;
 using System.Linq;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
 
 namespace HIVTraining_Vue.Server.Controllers
 {
@@ -28,12 +31,13 @@ namespace HIVTraining_Vue.Server.Controllers
 
         private bool _containerReady = false;
 
-        private static readonly Dictionary<int, int> PeerExamCourseMap = new()
+        private static readonly Dictionary<int, (int CourseSysId, string TrackCode)> PeerExamCourseMap = new()
 {
-    { 1010, 2001 }, 
-    { 1005, 2002 },
-    { 1003, 2003 },
-    { 5,    2004 }
+    { 1010, (2001, "HIV") },
+    { 1005, (2002, "HCV") },
+    { 1003, (2003, "HR") },
+    { 1007, (2003, "CJ") },
+    { 5,    (2004, "PREP") }
 };
 
         private async Task EnsureContainerAsync()
@@ -60,7 +64,10 @@ namespace HIVTraining_Vue.Server.Controllers
 
             var serviceClient = new BlobServiceClient(cs);
             _container = serviceClient.GetBlobContainerClient(containerName);
-            
+
+            QuestPDF.Settings.License = LicenseType.Community;
+
+
         }
 
         private static readonly string[] AllowedExt = new[] { ".pdf", ".doc", ".docx", ".png", ".jpg", ".jpeg" };
@@ -142,6 +149,466 @@ namespace HIVTraining_Vue.Server.Controllers
 
             return Ok(ordered);
         }
+
+        private static string BoolText(bool? value)
+        {
+            if (!value.HasValue) return "—";
+            return value.Value ? "Yes" : "No";
+        }
+
+        private static string DateText(DateTime? value)
+        {
+            return value?.ToString("MM/dd/yyyy") ?? "—";
+        }
+
+        private static string SafeText(string? value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? "—" : value.Trim();
+        }
+
+        private async Task<string> GetLookupValueAsync<T>(
+            IQueryable<T> query,
+            Func<T, object?> codeSelector,
+            Func<T, string?> valueSelector,
+            object? code)
+            where T : class
+        {
+            if (code == null) return "—";
+
+            var items = await query.AsNoTracking().ToListAsync();
+            var match = items.FirstOrDefault(x => string.Equals(
+                Convert.ToString(codeSelector(x)),
+                Convert.ToString(code),
+                StringComparison.OrdinalIgnoreCase));
+
+            return match == null ? Convert.ToString(code) ?? "—" : SafeText(valueSelector(match));
+        }
+
+        private void AddKeyValueTable(IContainer container, string title, List<(string Label, string Value)> rows)
+        {
+            container.Column(col =>
+            {
+                col.Item().PaddingBottom(8).Text(title).FontSize(15).Bold().FontColor("#1F1630");
+
+                col.Item().Table(table =>
+                {
+                    table.ColumnsDefinition(columns =>
+                    {
+                        columns.ConstantColumn(180);
+                        columns.RelativeColumn();
+                    });
+
+                    foreach (var row in rows)
+                    {
+                        table.Cell().Element(CellStyleHeader).Text(row.Label).FontSize(10).SemiBold();
+                        table.Cell().Element(CellStyleValue).Text(row.Value).FontSize(10);
+                    }
+                });
+            });
+
+            static IContainer CellStyleHeader(IContainer container) =>
+                container
+                    .Border(1)
+                    .BorderColor("#D9E0EA")
+                    .Background("#F6F8FB")
+                    .PaddingVertical(8)
+                    .PaddingHorizontal(10);
+
+            static IContainer CellStyleValue(IContainer container) =>
+                container
+                    .Border(1)
+                    .BorderColor("#D9E0EA")
+                    .PaddingVertical(8)
+                    .PaddingHorizontal(10);
+        }
+
+        private void AddLongTextBlock(IContainer container, string title, string value)
+        {
+            container.Column(col =>
+            {
+                col.Item().PaddingBottom(4).Text(title).FontSize(11).SemiBold().FontColor("#344054");
+                col.Item()
+                    .Border(1)
+                    .BorderColor("#D9E0EA")
+                    .Background("#FFFFFF")
+                    .Padding(10)
+                    .Text(SafeText(value))
+                    .FontSize(10)
+                    .LineHeight(1.4f);
+            });
+        }
+        [HttpGet("admin/manage-peer-detail/{userId:guid}/download-pdf")]
+        public async Task<IActionResult> DownloadPeerApplicationPdf(Guid userId)
+        {
+            var user = await _context.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.UserId == userId);
+
+            if (user == null)
+                return NotFound(new { message = "User not found." });
+
+            var peer = await _context.PeerUsers
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.UserSysId == user.UserSysId);
+
+            if (peer == null)
+                return NotFound(new { message = "Peer application not found." });
+
+            var aspUser = await _context.Set<ApplicationUser>()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Email == user.Email);
+
+            var lastCourseAttendedDate = await _context.UserCourses
+                .AsNoTracking()
+                .Where(x => x.UserSysId == user.UserSysId && x.Attended == true)
+                .MaxAsync(x => (DateTime?)(x.DateStatusChanged ?? x.DateModified ?? x.DateEntered));
+
+            var uploads = await (
+                from d in _context.PeerDocs.AsNoTracking()
+                join t in _context.LkPeerDocTypes.AsNoTracking()
+                    on d.PeerDocId equals t.PeerDocId
+                where d.PeerSysId == peer.PeerSysId
+                      && d.Active == true
+                      && t.Active == true
+                orderby d.DateUpload descending
+                select new
+                {
+                    d.PeerDocSysId,
+                    d.PeerDocId,
+                    DocTypeName = t.Name,
+                    d.DocPath,
+                    d.DateUpload,
+                    d.Reviewed
+                }
+            ).ToListAsync();
+
+            var requiredScormIds = PeerExamCourseMap
+                .Select(x => x.Value.CourseSysId)
+                .Distinct()
+                .ToList();
+
+            var examSessions = await _context.ScormAiccSessions
+                .AsNoTracking()
+                .Where(x => x.Userid == user.UserSysId && requiredScormIds.Contains(x.Scormid))
+                .GroupBy(x => x.Scormid)
+                .Select(g => g.OrderByDescending(x => x.Attempt)
+                              .ThenByDescending(x => x.Timemodified)
+                              .FirstOrDefault())
+                .ToListAsync();
+
+            var exams = examSessions.Select((s, index) => new
+            {
+                ExamName = $"Exam {index + 1}",
+                Status = s?.Lessonstatus ?? s?.Scormstatus ?? "Not Started",
+                Completed = s != null && (
+                    string.Equals(s.Scormstatus, "completed", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(s.Lessonstatus, "completed", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(s.Lessonstatus, "passed", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(s.Lessonstatus, "failed", StringComparison.OrdinalIgnoreCase)
+                ),
+                LastAttemptDate = s?.Timemodified
+            }).ToList();
+
+            var certificationTracks = new List<string>();
+            if (peer.CertHiv == true) certificationTracks.Add("HIV");
+            if (peer.CertHcv == true) certificationTracks.Add("HCV");
+            if (peer.CertHr == true) certificationTracks.Add("HR");
+            if (peer.CertPrep == true) certificationTracks.Add("PrEP");
+            if (peer.CertCriminalJustice == true) certificationTracks.Add("CJ");
+
+            var genderText = await GetLookupValueAsync(
+                _context.LkGenders,
+                x => ((LkGender)(object)x).Code,
+                x => ((LkGender)(object)x).Value,
+                peer.Gender);
+
+            var educationText = await GetLookupValueAsync(
+                _context.LkEducations,
+                x => ((LkEducation)(object)x).Code,
+                x => ((LkEducation)(object)x).Value,
+                user.Education);
+
+            var ethnicityText = await GetLookupValueAsync(
+                _context.LkEthnicities,
+                x => ((LkEthnicity)(object)x).Code,
+                x => ((LkEthnicity)(object)x).Value,
+                user.Ethnicity);
+
+            var raceText = await GetLookupValueAsync(
+                _context.LkRaces,
+                x => ((LkRace)(object)x).Code,
+                x => ((LkRace)(object)x).Value,
+                user.Race);
+
+            string statusText =
+                peer.Active == false ? "Archived" :
+                peer.Approve == true ? "Approved" :
+                peer.Disapprove == true ? "Disapproved" :
+                peer.Active == true ? "Submitted" :
+                "In Progress";
+
+            var fileName = $"{SafeFileName($"{user.FirstName}_{user.LastName}_Application")}.pdf";
+
+            var pdfBytes = Document.Create(container =>
+            {
+                container.Page(page =>
+                {
+                    page.Size(PageSizes.A4);
+                    page.Margin(28);
+                    page.DefaultTextStyle(x => x.FontSize(10).FontColor("#111827"));
+
+                    page.Header().Column(col =>
+                    {
+                        col.Item().Text("Peer Certification Application")
+                            .FontSize(20)
+                            .Bold()
+                            .FontColor("#1F1630");
+
+                        col.Item().PaddingTop(4).Text($"{SafeText(user.FirstName)} {SafeText(user.LastName)}")
+                            .FontSize(13)
+                            .SemiBold()
+                            .FontColor("#4F2D6F");
+
+                        col.Item().PaddingTop(2).Text($"Generated On: {DateTime.Now:MM/dd/yyyy hh:mm tt}")
+                            .FontSize(9)
+                            .FontColor("#667085");
+
+                        col.Item().PaddingTop(8).LineHorizontal(1).LineColor("#D9E0EA");
+                    });
+
+                    page.Content().PaddingVertical(10).Column(col =>
+                    {
+                        col.Spacing(18);
+
+                        // 1. Certification Review
+                        col.Item().Element(c => AddKeyValueTable(c, "1. Certification Review", new List<(string, string)>
+                {
+                    ("Status", statusText),
+                    ("Application Number", peer.ApplicantNumber?.ToString() ?? "—"),
+                    ("Approve", BoolText(peer.Approve)),
+                    ("Disapprove", BoolText(peer.Disapprove)),
+                    ("Archived", peer.Active == false ? "Yes" : "No"),
+                    ("Last Login", DateText(aspUser?.LastLoginDate)),
+                    ("Last Course Attended", DateText(lastCourseAttendedDate)),
+                    ("Approved Date", DateText(peer.ApprovedDt)),
+                    ("Disapproved Date", DateText(peer.DisapprovedDt)),
+                    ("Certification Tracks", certificationTracks.Any() ? string.Join(", ", certificationTracks) : "—"),
+                    ("HIV Cert Date", DateText(peer.CertHivdate)),
+                    ("HCV Cert Date", DateText(peer.CertHcvdate)),
+                    ("HR Cert Date", DateText(peer.CertHrdate)),
+                    ("PrEP Cert Date", DateText(peer.CertPrepDate)),
+                    ("CJ Cert Date", DateText(peer.CertCriminalJusticeDate)),
+                    ("Disapproval Reason", SafeText(peer.ReasonDisapprv))
+                }));
+
+                        // 2. Applicant Information
+                        col.Item().Element(c => AddKeyValueTable(c, "2. Applicant Information", new List<(string, string)>
+                {
+                    ("First Name", SafeText(user.FirstName)),
+                    ("Middle Initial", SafeText(user.Mi)),
+                    ("Last Name", SafeText(user.LastName)),
+                    ("Email", SafeText(user.Email)),
+                    ("Alt Email", SafeText(user.AltEmail)),
+                    ("Phone", SafeText(user.Phone)),
+                    ("Alt Phone", SafeText(user.AltPhone)),
+                    ("Cell Phone", SafeText(user.CellPhone)),
+                    ("Work Phone", SafeText(user.WorkPhone)),
+                    ("Work Phone Ext", SafeText(user.WorkPhoneExt)),
+                    ("Primary Can Text", BoolText(user.PrimaryCanText)),
+                    ("Alt Can Text", BoolText(user.AltCanText)),
+                    ("Address", SafeText(user.Address)),
+                    ("City", SafeText(user.City)),
+                    ("State", SafeText(user.State)),
+                    ("Zip", SafeText(user.Zip)),
+                    ("Country", SafeText(user.Country)),
+                    ("Title", SafeText(user.Title)),
+                    ("Organization", SafeText(user.Organization)),
+                    ("DOB", DateText(peer.Dob)),
+                    ("Gender", genderText),
+                    ("Agency Affiliation", SafeText(peer.AgencyAffilation)),
+                    ("Education", educationText),
+                    ("Ethnicity", ethnicityText),
+                    ("Race", raceText),
+                    ("Occupation", user.Occupation?.ToString() ?? "—"),
+                    ("Years Current Occupation", user.YearsCurrentOccupation?.ToString() ?? "—"),
+                    ("ADA Need", BoolText(user.Adaneed)),
+                    ("ADA Details", SafeText(user.Adadetails))
+                }));
+
+                        // 3. Lived Experience
+                        col.Item().Column(section =>
+                        {
+                            section.Spacing(8);
+                            section.Item().Text("3. Lived Experience").FontSize(15).Bold().FontColor("#1F1630");
+                            section.Item().Element(c => AddLongTextBlock(c, "Commitment to Wellness", peer.ExperienceCommitment));
+                            section.Item().Element(c => AddLongTextBlock(c, "Challenges", peer.ExperienceChallenges));
+                            section.Item().Element(c => AddLongTextBlock(c, "Why Serve as Peer Worker", peer.ExperienceWhy));
+                            section.Item().Element(c => AddKeyValueTable(c, "", new List<(string, string)>
+                    {
+                        ("Self Care", BoolText(peer.SelfCare))
+                    }));
+                        });
+
+                        // 4. Required Courses
+                        col.Item().Column(section =>
+                        {
+                            section.Spacing(8);
+                            section.Item().Text("4. Required Courses").FontSize(15).Bold().FontColor("#1F1630");
+                            section.Item().Element(c => AddKeyValueTable(c, "", new List<(string, string)>
+                    {
+                        ("Required Courses Completed", BoolText(peer.RequiredCourses))
+                    }));
+
+                            if (exams.Any())
+                            {
+                                section.Item().Table(table =>
+                                {
+                                    table.ColumnsDefinition(columns =>
+                                    {
+                                        columns.RelativeColumn(1.2f);
+                                        columns.RelativeColumn(1.2f);
+                                        columns.RelativeColumn(1f);
+                                        columns.RelativeColumn(1.3f);
+                                    });
+
+                                    void HeaderCell(string text) =>
+                                        table.Cell().Border(1).BorderColor("#D9E0EA").Background("#F6F8FB").Padding(8)
+                                            .Text(text).FontSize(10).SemiBold();
+
+                                    void BodyCell(string text) =>
+                                        table.Cell().Border(1).BorderColor("#D9E0EA").Padding(8)
+                                            .Text(text).FontSize(10);
+
+                                    HeaderCell("Exam");
+                                    HeaderCell("Status");
+                                    HeaderCell("Completed");
+                                    HeaderCell("Last Attempt");
+
+                                    foreach (var exam in exams)
+                                    {
+                                        BodyCell(exam.ExamName);
+                                        BodyCell(SafeText(exam.Status));
+                                        BodyCell(exam.Completed ? "Yes" : "No");
+                                        BodyCell(DateText(exam.LastAttemptDate));
+                                    }
+                                });
+                            }
+                        });
+
+                        // 5. Supervisor Information
+                        col.Item().Element(c => AddKeyValueTable(c, "5. Supervisor Information", new List<(string, string)>
+                {
+                    ("Supervisor First Name", SafeText(peer.SupvrFirstName)),
+                    ("Supervisor Last Name", SafeText(peer.SupvrLastName)),
+                    ("Supervisor Org", SafeText(peer.SupvrOrgName)),
+                    ("Supervisor Address 1", SafeText(peer.SupvrContAddr1)),
+                    ("Supervisor Address 2", SafeText(peer.SupvrContAddr2)),
+                    ("Supervisor City", SafeText(peer.SupvrContCity)),
+                    ("Supervisor State", SafeText(peer.SupvrContState)),
+                    ("Supervisor Zip", SafeText(peer.SupvrContZip)),
+                    ("Supervisor Phone", SafeText(peer.SupvrContPhone)),
+                    ("Supervisor Email", SafeText(peer.SupvrContEmail)),
+                    ("Completed Practicum", BoolText(peer.ComplPracticum)),
+                    ("500 Hours Minimum", BoolText(peer.ComplPracticumMin)),
+                    ("Practicum Begin Date", DateText(peer.PracticumBdate)),
+                    ("Practicum End Date", DateText(peer.PracticumEdate))
+                }));
+
+                        // 6. Documents
+                        col.Item().Column(section =>
+                        {
+                            section.Spacing(8);
+                            section.Item().Text("6. Documents").FontSize(15).Bold().FontColor("#1F1630");
+
+                            if (!uploads.Any())
+                            {
+                                section.Item().Text("No documents uploaded.").FontSize(10).FontColor("#667085");
+                            }
+                            else
+                            {
+                                section.Item().Table(table =>
+                                {
+                                    table.ColumnsDefinition(columns =>
+                                    {
+                                        columns.RelativeColumn(1.6f);
+                                        columns.RelativeColumn(2.5f);
+                                        columns.RelativeColumn(1.2f);
+                                        columns.RelativeColumn(0.9f);
+                                    });
+
+                                    void HeaderCell(string text) =>
+                                        table.Cell().Border(1).BorderColor("#D9E0EA").Background("#F6F8FB").Padding(8)
+                                            .Text(text).FontSize(10).SemiBold();
+
+                                    void BodyCell(string text) =>
+                                        table.Cell().Border(1).BorderColor("#D9E0EA").Padding(8)
+                                            .Text(text).FontSize(9);
+
+                                    HeaderCell("Document Type");
+                                    HeaderCell("File Name");
+                                    HeaderCell("Uploaded");
+                                    HeaderCell("Reviewed");
+
+                                    foreach (var doc in uploads)
+                                    {
+                                        BodyCell(SafeText(doc.DocTypeName));
+                                        BodyCell(SafeText(GetFileNameFromDocPath(doc.DocPath)));
+                                        BodyCell(DateText(doc.DateUpload));
+                                        BodyCell(doc.Reviewed == true ? "Yes" : "No");
+                                    }
+                                });
+                            }
+                        });
+
+                        // 7. Admin Notes
+                        col.Item().Column(section =>
+                        {
+                            section.Spacing(8);
+                            section.Item().Text("7. Admin Notes").FontSize(15).Bold().FontColor("#1F1630");
+                            section.Item()
+                                .Border(1)
+                                .BorderColor("#D9E0EA")
+                                .Padding(10)
+                                .Text(SafeText(peer.Notes))
+                                .FontSize(10);
+                        });
+                    });
+
+                    page.Footer().AlignCenter().Text(x =>
+                    {
+                        x.Span("Peer Certification Application | Page ");
+                        x.CurrentPageNumber();
+                        x.Span(" of ");
+                        x.TotalPages();
+                    });
+                });
+            }).GeneratePdf();
+
+            return File(pdfBytes, "application/pdf", fileName);
+        }
+        
+
+        private static void PdfSection(IContainer container, string title, Action<ColumnDescriptor> content)
+        {
+            container
+                .Border(1)
+                .BorderColor(Colors.Grey.Lighten2)
+                .Padding(12)
+                .Column(column =>
+                {
+                    column.Item()
+                        .Background(Colors.Purple.Lighten5)
+                        .Padding(8)
+                        .Text(title)
+                        .Bold()
+                        .FontSize(12)
+                        .FontColor(Colors.Purple.Darken2);
+
+                    column.Item().PaddingTop(8).Column(content);
+                });
+        }
+
+
         [HttpGet("ethics/{userId:guid}")]
         public async Task<IActionResult> GetEthics(Guid userId)
         {
@@ -258,9 +725,12 @@ namespace HIVTraining_Vue.Server.Controllers
 
             foreach (var s in subjects.OrderBy(x => ids.IndexOf(x.SubjectSysId)))
             {
-                var mappedCourseSysId = PeerExamCourseMap.ContainsKey(s.SubjectSysId)
-                    ? PeerExamCourseMap[s.SubjectSysId]
-                    : 0;
+                var mapped = PeerExamCourseMap.ContainsKey(s.SubjectSysId)
+     ? PeerExamCourseMap[s.SubjectSysId]
+     : (CourseSysId: 0, TrackCode: "");
+
+                var mappedCourseSysId = mapped.CourseSysId;
+                var trackCode = mapped.TrackCode;
 
                 var latestSession = await _context.ScormAiccSessions
                     .AsNoTracking()
@@ -332,6 +802,7 @@ namespace HIVTraining_Vue.Server.Controllers
                     videoUrl = s.VideoUrl,
                     scormId = mappedCourseSysId,
                     scoId = "",
+                    trackCode,
                     completed,
                     percent
                 });
@@ -495,6 +966,7 @@ namespace HIVTraining_Vue.Server.Controllers
                 .AsNoTracking()
                 .FirstOrDefaultAsync(u => u.UserId == userId);
 
+
             if (user == null)
                 return NotFound(new { message = "User not found" });
 
@@ -502,14 +974,13 @@ namespace HIVTraining_Vue.Server.Controllers
                 .AsNoTracking()
                 .FirstOrDefaultAsync(p => p.UserSysId == user.UserSysId);
 
-            // Track derived from existing flags (only one should be true)
-            var track =
-                (peer?.CertHiv == true) ? "HIV" :
-                (peer?.CertHcv == true) ? "HCV" :
-                (peer?.CertHr == true) ? "HR" :
-                (peer?.CertPrep == true) ? "PREP" :
-                (peer?.CertCriminalJustice == true) ? "CJ" :
-                "";
+            var tracks = new List<string>();
+
+            if (peer?.CertHiv == true) tracks.Add("HIV");
+            if (peer?.CertHcv == true) tracks.Add("HCV");
+            if (peer?.CertHr == true) tracks.Add("HR");
+            if (peer?.CertPrep == true) tracks.Add("PREP");
+            if (peer?.CertCriminalJustice == true) tracks.Add("CJ");
 
             return Ok(new
             {
@@ -518,38 +989,30 @@ namespace HIVTraining_Vue.Server.Controllers
                 user.FirstName,
                 user.Mi,
                 user.LastName,
-
                 user.Email,
                 user.AltEmail,
-
                 user.Phone,
                 user.AltPhone,
                 user.CellPhone,
-
                 user.WorkPhone,
                 user.WorkPhoneExt,
                 user.PrimaryCanText,
                 user.AltCanText,
-
                 user.Address,
                 user.City,
                 user.State,
                 user.Zip,
                 user.Country,
-
                 user.Title,
                 user.Organization,
-
                 user.WorkSetting,
                 user.Education,
                 user.Ethnicity,
                 user.Race,
                 user.Occupation,
                 user.YearsCurrentOccupation,
-
                 user.PronounId,
                 user.WorkLocationId,
-
                 user.Adaneed,
                 user.Adadetails,
 
@@ -558,12 +1021,13 @@ namespace HIVTraining_Vue.Server.Controllers
                 Gender = peer?.Gender,
                 AgencyAffilation = peer?.AgencyAffilation,
 
-                CertificationTrack = track,
+                CertificationTrack = tracks,
 
                 ExperienceCommitment = peer?.ExperienceCommitment,
                 ExperienceChallenges = peer?.ExperienceChallenges,
                 ExperienceWhy = peer?.ExperienceWhy,
                 SelfCare = peer?.SelfCare,
+                ApplicationPercentage = peer?.ApplicationPercentage ?? 0,
 
                 SupvrOrgName = peer?.SupvrOrgName,
                 SupvrFirstName = peer?.SupvrFirstName,
@@ -581,10 +1045,7 @@ namespace HIVTraining_Vue.Server.Controllers
             });
         }
 
-        // ==========================================================
-        // PUT Applicant Info (partial updates by step)
-        // IMPORTANT: ONLY update fields that exist in payload
-        // ==========================================================
+       
         [HttpPut("applicant-info/{userId:guid}")]
         public async Task<IActionResult> SaveApplicantInfo(Guid userId, [FromBody] JsonElement body)
         {
@@ -613,6 +1074,8 @@ namespace HIVTraining_Vue.Server.Controllers
                 return null;
             }
 
+            
+
             static bool? GetBool(JsonElement e, string name)
             {
                 if (!e.TryGetProperty(name, out var p)) return null;
@@ -621,6 +1084,35 @@ namespace HIVTraining_Vue.Server.Controllers
                 if (p.ValueKind == JsonValueKind.False) return false;
                 if (p.ValueKind == JsonValueKind.String && bool.TryParse(p.GetString(), out var b)) return b;
                 return null;
+            }
+
+            static List<string> GetStringList(JsonElement e, string name)
+            {
+                var result = new List<string>();
+
+                if (!e.TryGetProperty(name, out var p))
+                    return result;
+
+                if (p.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in p.EnumerateArray())
+                    {
+                        if (item.ValueKind == JsonValueKind.String)
+                        {
+                            var s = item.GetString();
+                            if (!string.IsNullOrWhiteSpace(s))
+                                result.Add(s.Trim().ToUpper());
+                        }
+                    }
+                }
+                else if (p.ValueKind == JsonValueKind.String)
+                {
+                    var s = p.GetString();
+                    if (!string.IsNullOrWhiteSpace(s))
+                        result.Add(s.Trim().ToUpper());
+                }
+
+                return result.Distinct().ToList();
             }
 
             static DateTime? GetDate(JsonElement e, string name)
@@ -750,19 +1242,92 @@ namespace HIVTraining_Vue.Server.Controllers
             if (HasProp(body, "PracticumBDate")) peer.PracticumBdate = GetDate(body, "PracticumBDate");
             if (HasProp(body, "PracticumEDate")) peer.PracticumEdate = GetDate(body, "PracticumEDate");
 
-            // Track flags (only update if present)
             if (HasProp(body, "CertificationTrack"))
             {
-                var trackVal = GetString(body, "CertificationTrack") ?? "";
+                var trackVals = GetStringList(body, "CertificationTrack");
+                var now = DateTime.UtcNow;
 
-                // Only one track true at a time:
-                peer.CertHiv = trackVal == "HIV";
-                peer.CertHcv = trackVal == "HCV";
-                peer.CertHr = trackVal == "HR";
-                peer.CertPrep = trackVal == "PREP";
-                peer.CertCriminalJustice = trackVal == "CJ";
+                if (trackVals.Contains("HIV") && trackVals.Contains("PREP"))
+                {
+                    return BadRequest(new { message = "HIV and PrEP certification tracks cannot be selected together." });
+                }
+
+                // HIV
+                if (trackVals.Contains("HIV"))
+                {
+                    peer.CertHiv = true;
+                    if (peer.CertHivdate == null)
+                        peer.CertHivdate = now;
+                }
+                else
+                {
+                    peer.CertHiv = false;
+                    peer.CertHivdate = null;
+                }
+
+                // HCV
+                if (trackVals.Contains("HCV"))
+                {
+                    peer.CertHcv = true;
+                    if (peer.CertHcvdate == null)
+                        peer.CertHcvdate = now;
+                }
+                else
+                {
+                    peer.CertHcv = false;
+                    peer.CertHcvdate = null;
+                }
+
+                // Harm Reduction
+                if (trackVals.Contains("HR"))
+                {
+                    peer.CertHr = true;
+                    if (peer.CertHrdate == null)
+                        peer.CertHrdate = now;
+                }
+                else
+                {
+                    peer.CertHr = false;
+                    peer.CertHrdate = null;
+                }
+
+                // PrEP
+                if (trackVals.Contains("PREP"))
+                {
+                    peer.CertPrep = true;
+                    if (peer.CertPrepDate == null)
+                        peer.CertPrepDate = now;
+                }
+                else
+                {
+                    peer.CertPrep = false;
+                    peer.CertPrepDate = null;
+                }
+
+                // Criminal Justice
+                if (trackVals.Contains("CJ"))
+                {
+                    peer.CertCriminalJustice = true;
+                    if (peer.CertCriminalJusticeDate == null)
+                        peer.CertCriminalJusticeDate = now;
+                }
+                else
+                {
+                    peer.CertCriminalJustice = false;
+                    peer.CertCriminalJusticeDate = null;
+                }
             }
 
+
+            if (HasProp(body, "ApplicationPercentage"))
+            {
+                var pct = GetInt(body, "ApplicationPercentage");
+                if (pct.HasValue)
+                {
+                    var safePct = Math.Max(0, Math.Min(99, pct.Value));
+                    peer.ApplicationPercentage = safePct;
+                }
+            }
             peer.DateModify = DateTime.UtcNow;
             //peer.Active = true;
 
@@ -790,7 +1355,10 @@ namespace HIVTraining_Vue.Server.Controllers
                 return Ok(new List<object>());
 
             var requiredDocIds = new[] { 2, 3, 7 };
-            var requiredScormIds = PeerExamCourseMap.Values.ToList();
+            var requiredScormIds = PeerExamCourseMap
+    .Select(x => x.Value.CourseSysId)
+    .Distinct()
+    .ToList();
 
             var results = new List<object>();
 
@@ -836,10 +1404,14 @@ namespace HIVTraining_Vue.Server.Controllers
                 string appStatus;
                 if (peer.Approve == true)
                     appStatus = "Approved";
-                else if (peer.DisapprvEmailSent == true)
+                else if (peer.Disapprove == true)
                     appStatus = "Disapproved";
+                else if (peer.Active == false)
+                    appStatus = "Archived";
+                else if (peer.Active == true && (peer.ApplicationPercentage ?? 0) == 100)
+                    appStatus = "Submitted";
                 else
-                    appStatus = "Pending";
+                    appStatus = "In Progress";
 
                 results.Add(new
                 {
@@ -865,6 +1437,808 @@ namespace HIVTraining_Vue.Server.Controllers
             return Ok(results);
         }
 
+        [HttpGet("admin/manage-peer")]
+        public async Task<IActionResult> GetManagePeerList(
+    [FromQuery] string view = "all",
+    [FromQuery] string? search = null,
+    [FromQuery] int page = 1,
+    [FromQuery] int pageSize = 10)
+        {
+            page = page < 1 ? 1 : page;
+            pageSize = pageSize switch
+            {
+                10 => 10,
+                20 => 20,
+                50 => 50,
+                100 => 100,
+                _ => 10
+            };
+
+            var query =
+                from p in _context.PeerUsers.AsNoTracking()
+                join u in _context.Users.AsNoTracking()
+                    on p.UserSysId equals u.UserSysId
+                join au in _context.Set<ApplicationUser>().AsNoTracking()
+                on u.Email equals au.Email into aspJoin
+                from asp in aspJoin.DefaultIfEmpty()
+                select new
+                {
+                    Peer = p,
+                    User = u,
+                    AspUser = asp
+                };
+
+            view = (view ?? "all").Trim().ToLower();
+
+            switch (view)
+            {
+                case "inprogress":
+                    query = query.Where(x =>
+                        x.Peer.Approve != true &&
+                        x.Peer.Disapprove != true &&
+                        x.Peer.Active != false &&
+                        (x.Peer.Active != true || (x.Peer.ApplicationPercentage ?? 0) < 100));
+                    break;
+
+                case "submitted":
+                    query = query.Where(x =>
+                        x.Peer.Approve != true &&
+                        x.Peer.Disapprove != true &&
+                        x.Peer.Active == true &&
+                        (x.Peer.ApplicationPercentage ?? 0) == 100);
+                    break;
+
+                case "archived":
+                    query = query.Where(x =>
+                        x.Peer.Approve != true &&
+                        x.Peer.Disapprove != true &&
+                        x.Peer.Active == false);
+                    break;
+
+                case "approved":
+                    query = query.Where(x =>
+                        x.Peer.Approve == true &&
+                        x.Peer.Active == true);
+                    break;
+
+                case "all":
+                default:
+                    break;
+            }
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var term = search.Trim().ToLower();
+
+                query = query.Where(x =>
+                    ((x.User.FirstName ?? "").ToLower().Contains(term)) ||
+                    ((x.User.LastName ?? "").ToLower().Contains(term)) ||
+                    (((x.User.FirstName ?? "") + " " + (x.User.LastName ?? "")).ToLower().Contains(term)));
+            }
+
+            var totalRecords = await query.CountAsync();
+
+            var pagedRows = await query
+    .OrderByDescending(x => x.Peer.DateCreate)
+    .Skip((page - 1) * pageSize)
+    .Take(pageSize)
+    .Select(x => new
+    {
+        peerSysId = x.Peer.PeerSysId,
+        userSysId = x.User.UserSysId,
+        userId = x.User.UserId,
+
+        firstName = x.User.FirstName,
+        lastName = x.User.LastName,
+        fullName = ((x.User.FirstName ?? "") + " " + (x.User.LastName ?? "")).Trim(),
+
+        certHiv = x.Peer.CertHiv,
+        certHcv = x.Peer.CertHcv,
+        certHr = x.Peer.CertHr,
+        certPrep = x.Peer.CertPrep,
+        certCriminalJustice = x.Peer.CertCriminalJustice,
+
+        approve = x.Peer.Approve,
+        disapprove = x.Peer.Disapprove,
+        active = x.Peer.Active,
+        submittedOn = x.Peer.DateCreate,
+        lastUpdated = x.Peer.DateModify,
+        approvedDt = x.Peer.ApprovedDt,
+        disapprovedDt = x.Peer.DisapprovedDt,
+
+        applicationPercentage = x.Peer.ApplicationPercentage,
+
+        lastLoginDate = x.AspUser != null ? x.AspUser.LastLoginDate : null,
+
+        applicationStatus =
+    x.Peer.Approve == true ? "Approved" :
+    x.Peer.Disapprove == true ? "Disapproved" :
+    x.Peer.Active == false ? "Archived" :
+    (x.Peer.Active == true && (x.Peer.ApplicationPercentage ?? 0) == 100) ? "Submitted" :
+    "In Progress"
+    })
+    .ToListAsync();
+
+            var userSysIds = pagedRows.Select(x => x.userSysId).Distinct().ToList();
+
+            var lastAttendedMap = await _context.UserCourses
+                .AsNoTracking()
+                .Where(uc =>
+                    userSysIds.Contains(uc.UserSysId) &&
+                    uc.Attended == true)
+                .GroupBy(uc => uc.UserSysId)
+                .Select(g => new
+                {
+                    userSysId = g.Key,
+                    lastCourseAttendedDate = g.Max(x => x.DateStatusChanged ?? x.DateModified ?? x.DateEntered)
+                })
+                .ToDictionaryAsync(x => x.userSysId, x => x.lastCourseAttendedDate);
+
+            var rows = pagedRows.Select(x => new
+            {
+                x.peerSysId,
+                x.userSysId,
+                x.userId,
+                x.firstName,
+                x.lastName,
+                x.fullName,
+
+                certificationTrack = string.Join(", ", new[]
+    {
+        x.certHiv == true ? "HIV" : null,
+        x.certHcv == true ? "HCV" : null,
+        x.certHr == true ? "HR" : null,
+        x.certPrep == true ? "PrEP" : null,
+        x.certCriminalJustice == true ? "CJ" : null
+    }.Where(t => !string.IsNullOrWhiteSpace(t))),
+
+                x.approve,
+                x.disapprove,
+                x.active,
+                x.submittedOn,
+                x.lastUpdated,
+                x.approvedDt,
+                x.disapprovedDt,
+                x.lastLoginDate,
+                lastCourseAttendedDate = lastAttendedMap.ContainsKey(x.userSysId)
+        ? lastAttendedMap[x.userSysId]
+        : null,
+                applicationPercentage = x.applicationPercentage ?? 0,
+                x.applicationStatus
+            }).ToList();
+
+            return Ok(new
+            {
+                totalRecords,
+                page,
+                pageSize,
+                items = rows
+            });
+        }
+
+        [HttpGet("continuing-education-eligibility/{userId:guid}")]
+        public async Task<IActionResult> GetContinuingEducationEligibility(Guid userId)
+        {
+            var user = await _context.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.UserId == userId);
+
+            if (user == null)
+            {
+                return NotFound(new
+                {
+                    eligible = false,
+                    message = "User not found."
+                });
+            }
+
+            var hasApprovedPeer = await _context.PeerUsers
+    .AsNoTracking()
+    .AnyAsync(p => p.UserSysId == user.UserSysId && p.Approve == true && p.Active == true);
+
+            if (!hasApprovedPeer)
+            {
+                return Ok(new
+                {
+                    eligible = false,
+                    message = "Continuing Education Credits are available only for approved peer-certified users."
+                });
+            }
+
+            return Ok(new
+            {
+                eligible = true
+            });
+
+            
+        }
+
+        [HttpGet("admin/manage-edu-credits")]
+        public async Task<IActionResult> GetManageEduCredits(
+    [FromQuery] string? search = null,
+    [FromQuery] int page = 1,
+    [FromQuery] int pageSize = 10)
+        {
+            const int ceDocType = 9;
+
+            page = page < 1 ? 1 : page;
+            pageSize = pageSize switch
+            {
+                10 => 10,
+                20 => 20,
+                50 => 50,
+                100 => 100,
+                _ => 10
+            };
+
+            var query =
+                from d in _context.PeerDocs.AsNoTracking()
+                join p in _context.PeerUsers.AsNoTracking()
+                    on d.PeerSysId equals p.PeerSysId
+                join u in _context.Users.AsNoTracking()
+                    on p.UserSysId equals u.UserSysId
+                where d.Active == true && d.PeerDocId == ceDocType
+                select new
+                {
+                    peerDocSysId = d.PeerDocSysId,
+                    peerSysId = d.PeerSysId,
+                    userId = u.UserId,
+                    userSysId = u.UserSysId,
+                    firstName = u.FirstName,
+                    lastName = u.LastName,
+                    fullName = ((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim(),
+                    email = u.Email,
+                    fileName = d.DocPath != null
+                        ? (d.DocPath.Contains("/") ? d.DocPath.Substring(d.DocPath.LastIndexOf('/') + 1) : d.DocPath)
+                        : "",
+                    noOfCredits = d.NoOfCredits,
+                    dateUpload = d.DateUpload,
+                    reviewed = d.Reviewed
+                };
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var term = search.Trim().ToLower();
+
+                query = query.Where(x =>
+                    ((x.firstName ?? "").ToLower().Contains(term)) ||
+                    ((x.lastName ?? "").ToLower().Contains(term)) ||
+                    (((x.firstName ?? "") + " " + (x.lastName ?? "")).ToLower().Contains(term)));
+            }
+
+            var totalRecords = await query.CountAsync();
+
+            var items = await query
+                .OrderByDescending(x => x.dateUpload)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return Ok(new
+            {
+                totalRecords,
+                page,
+                pageSize,
+                items
+            });
+        }
+        [HttpPut("admin/manage-edu-credits/{peerDocSysId:int}/review")]
+        public async Task<IActionResult> UpdateEduCreditReviewStatus(int peerDocSysId, [FromBody] JsonElement body)
+        {
+            static bool? GetBool(JsonElement e, string name)
+            {
+                if (!e.TryGetProperty(name, out var p)) return null;
+                if (p.ValueKind == JsonValueKind.Null) return null;
+                if (p.ValueKind == JsonValueKind.True) return true;
+                if (p.ValueKind == JsonValueKind.False) return false;
+                if (p.ValueKind == JsonValueKind.String && bool.TryParse(p.GetString(), out var b)) return b;
+                return null;
+            }
+
+            var reviewed = GetBool(body, "reviewed");
+            if (!reviewed.HasValue)
+                return BadRequest(new { message = "Reviewed value is required." });
+
+            var doc = await _context.PeerDocs.FirstOrDefaultAsync(d => d.PeerDocSysId == peerDocSysId && d.Active == true);
+            if (doc == null)
+                return NotFound(new { message = "Document not found." });
+
+            doc.Reviewed = reviewed.Value;
+            doc.DateModify = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                message = "Review status updated successfully.",
+                peerDocSysId = doc.PeerDocSysId,
+                reviewed = doc.Reviewed
+            });
+        }
+        [HttpPost("continuing-education/upload/{userId:guid}")]
+        [RequestSizeLimit(MaxUploadBytes)]
+        public async Task<IActionResult> UploadContinuingEducationDoc(
+    Guid userId,
+    [FromForm] IFormFile file,
+    [FromForm] decimal? noOfCredits)
+        {
+            const int ceDocType = 9;
+
+            if (file == null || file.Length == 0)
+                return BadRequest("No file uploaded.");
+
+            if (file.Length > MaxUploadBytes)
+                return BadRequest("File too large.");
+
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (!AllowedExt.Contains(ext))
+                return BadRequest("Invalid file type.");
+
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == userId);
+            if (user == null)
+                return NotFound("User not found.");
+
+            var peer = await _context.PeerUsers
+    .Where(p => p.UserSysId == user.UserSysId && p.Approve == true && p.Active == true)
+    .OrderByDescending(p => p.ApprovedDt ?? p.DateModify ?? p.DateCreate)
+    .FirstOrDefaultAsync();
+
+            if (peer == null)
+                return BadRequest("Only approved peer-certified users can upload CE documents.");
+
+            await EnsureContainerAsync();
+
+            var originalSafe = SafeBlobSegment(Path.GetFileName(file.FileName));
+            var ext2 = Path.GetExtension(originalSafe).ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(ext2)) ext2 = ext;
+
+            var storedName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}{ext2}";
+            var blobName = $"peeruploads/{peer.PeerSysId}/{ceDocType}/{storedName}";
+
+            var blob = _container.GetBlobClient(blobName);
+
+            await using (var stream = file.OpenReadStream())
+            {
+                await blob.UploadAsync(stream, new BlobHttpHeaders
+                {
+                    ContentType = string.IsNullOrWhiteSpace(file.ContentType)
+                        ? GuessContentType(originalSafe)
+                        : file.ContentType
+                });
+            }
+
+            var doc = new PeerDoc
+            {
+                PeerSysId = peer.PeerSysId,
+                PeerDocId = ceDocType,
+                DocType = ceDocType,
+                DocPath = blobName,
+                DateUpload = DateTime.UtcNow,
+                Active = true,
+                UploadBy = user.Email ?? user.UserSysId.ToString(),
+                Reviewed = false,
+                NoOfCredits = noOfCredits
+            };
+
+            _context.PeerDocs.Add(doc);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Continuing education document uploaded successfully." });
+        }
+        [HttpGet("continuing-education/{userId:guid}")]
+        public async Task<IActionResult> GetContinuingEducationPage(Guid userId)
+        {
+            var user = await _context.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.UserId == userId);
+
+            if (user == null)
+                return NotFound(new { message = "User not found." });
+
+            var approvedPeers = await _context.PeerUsers
+                .AsNoTracking()
+                .Where(p => p.UserSysId == user.UserSysId && p.Approve == true && p.Active == true)
+                .OrderByDescending(p => p.ApprovedDt ?? p.DateModify ?? p.DateCreate)
+                .ToListAsync();
+
+            if (!approvedPeers.Any())
+                return BadRequest(new { message = "Continuing Education Credits are available only for approved peer-certified users." });
+
+            var certificationTracks = approvedPeers
+                .SelectMany(peer =>
+                {
+                    var tracks = new List<object>();
+
+                    if (peer.CertHiv == true)
+                        tracks.Add(new { code = "HIV", certDate = peer.CertHivdate });
+
+                    if (peer.CertHcv == true)
+                        tracks.Add(new { code = "HCV", certDate = peer.CertHcvdate });
+
+                    if (peer.CertHr == true)
+                        tracks.Add(new { code = "HR", certDate = peer.CertHrdate });
+
+                    if (peer.CertPrep == true)
+                        tracks.Add(new { code = "PREP", certDate = peer.CertPrepDate });
+
+                    if (peer.CertCriminalJustice == true)
+                        tracks.Add(new { code = "CJ", certDate = peer.CertCriminalJusticeDate });
+
+                    return tracks;
+                })
+                .GroupBy(x => ((string)x.GetType().GetProperty("code")!.GetValue(x)!).ToUpper())
+                .Select(g => g
+                    .OrderByDescending(x => (DateTime?)x.GetType().GetProperty("certDate")!.GetValue(x))
+                    .First())
+                .ToList();
+
+            var approvedPeerIds = approvedPeers.Select(p => p.PeerSysId).ToList();
+
+            var documents = await _context.PeerDocs
+                .AsNoTracking()
+                .Where(d =>
+                    approvedPeerIds.Contains(d.PeerSysId) &&
+                    d.Active == true &&
+                    d.PeerDocId == 9)
+                .OrderByDescending(d => d.DateUpload)
+                .Select(d => new
+                {
+                    peerDocSysId = d.PeerDocSysId,
+                    peerDocId = d.PeerDocId,
+                    fileName = d.DocPath != null
+                        ? (d.DocPath.Contains("/") ? d.DocPath.Substring(d.DocPath.LastIndexOf('/') + 1) : d.DocPath)
+                        : "",
+                    noOfCredits = d.NoOfCredits,
+                    dateUpload = d.DateUpload
+                })
+                .ToListAsync();
+
+            return Ok(new
+            {
+                certificationTracks,
+                documents
+            });
+        }
+        [HttpGet("admin/manage-peer-detail/{userId:guid}")]
+        public async Task<IActionResult> GetManagePeerDetail(Guid userId)
+        {
+            var user = await _context.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.UserId == userId);
+
+            if (user == null)
+                return NotFound(new { message = "User not found." });
+
+            var peer = await _context.PeerUsers
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.UserSysId == user.UserSysId);
+
+            if (peer == null)
+                return NotFound(new { message = "Peer application not found." });
+
+            var aspUser = await _context.Set<ApplicationUser>()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Email == user.Email);
+
+            var lastCourseAttendedDate = await _context.UserCourses
+                .AsNoTracking()
+                .Where(x => x.UserSysId == user.UserSysId && x.Attended == true)
+                .MaxAsync(x => (DateTime?)(x.DateStatusChanged ?? x.DateModified ?? x.DateEntered));
+
+            var uploads = await (
+                from d in _context.PeerDocs.AsNoTracking()
+                join t in _context.LkPeerDocTypes.AsNoTracking()
+                    on d.PeerDocId equals t.PeerDocId
+                where d.PeerSysId == peer.PeerSysId
+                      && d.Active == true
+                      && t.Active == true
+                orderby d.DateUpload descending
+                select new
+                {
+                    d.PeerDocSysId,
+                    d.PeerDocId,
+                    docTypeName = t.Name,
+                    d.DocPath,
+                    d.DateUpload,
+                    d.Reviewed
+                }
+            ).ToListAsync();
+
+            var requiredScormIds = PeerExamCourseMap
+                .Select(x => x.Value.CourseSysId)
+                .Distinct()
+                .ToList();
+
+            var examSessions = await _context.ScormAiccSessions
+                .AsNoTracking()
+                .Where(x => x.Userid == user.UserSysId && requiredScormIds.Contains(x.Scormid))
+                .GroupBy(x => x.Scormid)
+                .Select(g => g.OrderByDescending(x => x.Attempt)
+                              .ThenByDescending(x => x.Timemodified)
+                              .FirstOrDefault())
+                .ToListAsync();
+
+            var exams = examSessions.Select(s => new
+            {
+                scormId = s?.Scormid,
+                completed = s != null && (
+                    string.Equals(s.Scormstatus, "completed", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(s.Lessonstatus, "completed", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(s.Lessonstatus, "passed", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(s.Lessonstatus, "failed", StringComparison.OrdinalIgnoreCase)
+                ),
+                status = s?.Lessonstatus ?? s?.Scormstatus ?? "Not Started",
+                lastAttemptDate = s?.Timemodified
+            }).ToList();
+
+            var certificationTrack = new List<object>();
+
+            DateTime? certHivdate = peer.CertHivdate;
+            DateTime? certHcvdate = peer.CertHcvdate;
+            DateTime? certHrdate = peer.CertHrdate;
+            DateTime? certPrepDate = peer.CertPrepDate;
+            DateTime? certCriminalJusticeDate = peer.CertCriminalJusticeDate;
+
+            if (peer.CertHiv == true)
+                certificationTrack.Add(new { code = "HIV", certDate = certHivdate });
+
+            if (peer.CertHcv == true)
+                certificationTrack.Add(new { code = "HCV", certDate = certHcvdate });
+
+            if (peer.CertHr == true)
+                certificationTrack.Add(new { code = "HR", certDate = certHrdate });
+
+            if (peer.CertPrep == true)
+                certificationTrack.Add(new { code = "PREP", certDate = certPrepDate });
+
+            if (peer.CertCriminalJustice == true)
+                certificationTrack.Add(new { code = "CJ", certDate = certCriminalJusticeDate });
+
+
+            Console.WriteLine($"PeerSysId: {peer.PeerSysId}");
+            Console.WriteLine($"UserSysId: {peer.UserSysId}");
+            Console.WriteLine($"CertHivdate: {peer.CertHivdate}");
+            Console.WriteLine($"CertHcvdate: {peer.CertHcvdate}");
+            Console.WriteLine($"CertHrdate: {peer.CertHrdate}");
+            Console.WriteLine($"CertPrepDate: {peer.CertPrepDate}");
+            Console.WriteLine($"CertCriminalJusticeDate: {peer.CertCriminalJusticeDate}");
+            return Ok(new
+            {
+                userId = user.UserId,
+                userSysId = user.UserSysId,
+                peerSysId = peer.PeerSysId,
+
+                fullName = ((user.FirstName ?? "") + " " + (user.LastName ?? "")).Trim(),
+                firstName = user.FirstName,
+                mi = user.Mi,
+                lastName = user.LastName,
+                email = user.Email,
+                altEmail = user.AltEmail,
+                phone = user.Phone,
+                altPhone = user.AltPhone,
+                cellPhone = user.CellPhone,
+                workPhone = user.WorkPhone,
+                workPhoneExt = user.WorkPhoneExt,
+                address = user.Address,
+                city = user.City,
+                state = user.State,
+                zip = user.Zip,
+                country = user.Country,
+                title = user.Title,
+                organization = user.Organization,
+                education = user.Education,
+                ethnicity = user.Ethnicity,
+                race = user.Race,
+                occupation = user.Occupation,
+                yearsCurrentOccupation = user.YearsCurrentOccupation,
+                adaneed = user.Adaneed,
+                adadetails = user.Adadetails,
+
+                applicationPercentage = peer.ApplicationPercentage ?? 0,
+
+                dob = peer.Dob,
+                gender = peer.Gender,
+                agencyAffilation = peer.AgencyAffilation,
+                applicantNumber = peer.ApplicantNumber,
+
+                approve = peer.Approve,
+                disapprove = peer.Disapprove,
+                active = peer.Active,
+                approvedDt = peer.ApprovedDt,
+                disapprovedDt = peer.DisapprovedDt,
+
+                certHivdate = peer.CertHivdate,
+                certHcvdate = peer.CertHcvdate,
+                certHrdate = peer.CertHrdate,
+                certPrepDate = peer.CertPrepDate,
+                certCriminalJusticeDate = peer.CertCriminalJusticeDate,
+
+                experienceCommitment = peer.ExperienceCommitment,
+                experienceChallenges = peer.ExperienceChallenges,
+                experienceWhy = peer.ExperienceWhy,
+                selfCare = peer.SelfCare,
+
+                requiredCourses = peer.RequiredCourses,
+
+                supvrOrgName = peer.SupvrOrgName,
+                supvrFirstName = peer.SupvrFirstName,
+                supvrLastName = peer.SupvrLastName,
+                supvrContAddr1 = peer.SupvrContAddr1,
+                supvrContAddr2 = peer.SupvrContAddr2,
+                supvrContCity = peer.SupvrContCity,
+                supvrContState = peer.SupvrContState,
+                supvrContZip = peer.SupvrContZip,
+                supvrContPhone = peer.SupvrContPhone,
+                supvrContEmail = peer.SupvrContEmail,
+                complPracticum = peer.ComplPracticum,
+                complPracticumMin = peer.ComplPracticumMin,
+                practicumBdate = peer.PracticumBdate,
+                practicumEdate = peer.PracticumEdate,
+
+                examStatus = peer.ExamStatus,
+                dateCompletion = peer.DateCompletion,
+                dateCert = peer.DateCert,
+                notes = peer.Notes,
+                reasonDisapprv = peer.ReasonDisapprv,
+
+                lastLoginDate = aspUser != null ? aspUser.LastLoginDate : null,
+                lastCourseAttendedDate,
+
+                certificationTracks = certificationTrack,
+                uploads,
+                exams
+            });
+        }
+        [HttpPut("admin/manage-peer-detail/{userId:guid}")]
+        public async Task<IActionResult> UpdateManagePeerDetail(Guid userId, [FromBody] JsonElement body)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == userId);
+            if (user == null)
+                return NotFound(new { message = "User not found." });
+
+            var peer = await _context.PeerUsers.FirstOrDefaultAsync(p => p.UserSysId == user.UserSysId);
+            if (peer == null)
+                return NotFound(new { message = "Peer application not found." });
+
+            static bool HasProp(JsonElement e, string name) =>
+                e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out _);
+
+            static string? GetString(JsonElement e, string name)
+            {
+                if (!e.TryGetProperty(name, out var p)) return null;
+                if (p.ValueKind == JsonValueKind.Null) return null;
+                var s = p.GetString();
+                return string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+            }
+
+            static bool? GetBool(JsonElement e, string name)
+            {
+                if (!e.TryGetProperty(name, out var p)) return null;
+                if (p.ValueKind == JsonValueKind.Null) return null;
+                if (p.ValueKind == JsonValueKind.True) return true;
+                if (p.ValueKind == JsonValueKind.False) return false;
+                if (p.ValueKind == JsonValueKind.String && bool.TryParse(p.GetString(), out var b)) return b;
+                return null;
+            }
+
+            static int? GetInt(JsonElement e, string name)
+            {
+                if (!e.TryGetProperty(name, out var p)) return null;
+                if (p.ValueKind == JsonValueKind.Number && p.TryGetInt32(out var v)) return v;
+                if (p.ValueKind == JsonValueKind.String && int.TryParse(p.GetString(), out var s)) return s;
+                return null;
+            }
+
+            static DateTime? GetDate(JsonElement e, string name)
+            {
+                if (!e.TryGetProperty(name, out var p)) return null;
+                if (p.ValueKind == JsonValueKind.String && DateTime.TryParse(p.GetString(), out var d)) return d;
+                return null;
+            }
+
+            if (HasProp(body, "ApplicantNumber")) peer.ApplicantNumber = GetInt(body, "ApplicantNumber");
+            if (HasProp(body, "Approve")) peer.Approve = GetBool(body, "Approve");
+            if (HasProp(body, "Disapprove")) peer.Disapprove = GetBool(body, "Disapprove");
+            if (HasProp(body, "Active")) peer.Active = GetBool(body, "Active");
+            if (HasProp(body, "ReasonDisapprv")) peer.ReasonDisapprv = GetString(body, "ReasonDisapprv");
+            if (HasProp(body, "Notes")) peer.Notes = GetString(body, "Notes");
+
+            if (HasProp(body, "CertHivdate")) peer.CertHivdate = GetDate(body, "CertHivdate");
+            if (HasProp(body, "CertHcvdate")) peer.CertHcvdate = GetDate(body, "CertHcvdate");
+            if (HasProp(body, "CertHrdate")) peer.CertHrdate = GetDate(body, "CertHrdate");
+            if (HasProp(body, "CertPrepDate")) peer.CertPrepDate = GetDate(body, "CertPrepDate");
+            if (HasProp(body, "CertCriminalJusticeDate")) peer.CertCriminalJusticeDate = GetDate(body, "CertCriminalJusticeDate");
+            if (HasProp(body, "ExperienceCommitment")) peer.ExperienceCommitment = GetString(body, "ExperienceCommitment");
+            if (HasProp(body, "ExperienceChallenges")) peer.ExperienceChallenges = GetString(body, "ExperienceChallenges");
+            if (HasProp(body, "ExperienceWhy")) peer.ExperienceWhy = GetString(body, "ExperienceWhy");
+            if (HasProp(body, "SelfCare")) peer.SelfCare = GetBool(body, "SelfCare");
+
+            if (HasProp(body, "RequiredCourses"))
+            {
+                var reqCourses = GetBool(body, "RequiredCourses");
+                if (reqCourses.HasValue)
+                    peer.RequiredCourses = reqCourses.Value;
+            }
+
+            if (HasProp(body, "SupvrOrgName")) peer.SupvrOrgName = GetString(body, "SupvrOrgName");
+            if (HasProp(body, "SupvrFirstName")) peer.SupvrFirstName = GetString(body, "SupvrFirstName");
+            if (HasProp(body, "SupvrLastName")) peer.SupvrLastName = GetString(body, "SupvrLastName");
+            if (HasProp(body, "SupvrContAddr1")) peer.SupvrContAddr1 = GetString(body, "SupvrContAddr1");
+            if (HasProp(body, "SupvrContAddr2")) peer.SupvrContAddr2 = GetString(body, "SupvrContAddr2");
+            if (HasProp(body, "SupvrContPhone")) peer.SupvrContPhone = GetString(body, "SupvrContPhone");
+            if (HasProp(body, "SupvrContEmail")) peer.SupvrContEmail = GetString(body, "SupvrContEmail");
+
+            if (HasProp(body, "ComplPracticum")) peer.ComplPracticum = GetBool(body, "ComplPracticum");
+            if (HasProp(body, "ComplPracticumMin")) peer.ComplPracticumMin = GetBool(body, "ComplPracticumMin");
+            if (HasProp(body, "PracticumBDate")) peer.PracticumBdate = GetDate(body, "PracticumBDate");
+            if (HasProp(body, "PracticumEDate")) peer.PracticumEdate = GetDate(body, "PracticumEDate");
+            peer.DateModify = DateTime.UtcNow;
+
+            // Archived means approve/disapprove cleared and active = false
+            if (peer.Active == false)
+            {
+                peer.Approve = null;
+                peer.Disapprove = null;
+                peer.ApprovedDt = null;
+                peer.DisapprovedDt = null;
+            }
+
+            // Approved
+            else if (peer.Approve == true)
+            {
+                peer.Active = true;
+                peer.ApprovedDt = DateTime.UtcNow;
+                peer.Disapprove = null;
+                peer.DisapprovedDt = null;
+            }
+
+            // Disapproved
+            else if (peer.Disapprove == true)
+            {
+                peer.Active = true;
+                peer.DisapprovedDt = DateTime.UtcNow;
+                peer.Approve = null;
+                peer.ApprovedDt = null;
+            }
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Peer details updated successfully." });
+        }
+        [HttpGet("uploads/preview/{peerDocSysId:int}")]
+        public async Task<IActionResult> PreviewUpload(int peerDocSysId)
+        {
+            var doc = await _context.PeerDocs.AsNoTracking()
+                .FirstOrDefaultAsync(d => d.PeerDocSysId == peerDocSysId);
+
+            if (doc == null || doc.Active != true)
+                return NotFound(new { message = "Document not found." });
+
+            if (!string.IsNullOrWhiteSpace(doc.DocPath) && doc.DocPath.TrimStart().StartsWith("{"))
+                return BadRequest(new { message = "This record is not a file upload." });
+
+            var blobName = doc.DocPath;
+            if (string.IsNullOrWhiteSpace(blobName))
+                return NotFound(new { message = "Missing blob path in DocPath." });
+
+            var blob = _container.GetBlobClient(blobName);
+
+            if (!await blob.ExistsAsync())
+                return NotFound(new { message = "File missing in blob storage." });
+
+            var fileName = blobName.Contains("/")
+                ? blobName.Split('/').Last()
+                : Path.GetFileName(blobName);
+
+            var contentType = GuessContentType(fileName);
+
+            var dl = await blob.DownloadStreamingAsync();
+
+            Response.Headers["Content-Disposition"] = $"inline; filename=\"{fileName}\"";
+
+            return File(dl.Value.Content, contentType, enableRangeProcessing: true);
+        }
+
         [HttpPost("submit/{userId:guid}")]
         public async Task<IActionResult> SubmitApplication(Guid userId)
         {
@@ -879,6 +2253,11 @@ namespace HIVTraining_Vue.Server.Controllers
 
             if (peer == null)
                 return BadRequest(new { message = "Peer application not found. Please complete Step 1 first." });
+
+            if (peer.CertHiv == true && peer.CertPrep == true)
+            {
+                return BadRequest(new { message = "HIV and PrEP certification tracks cannot be selected together." });
+            }
 
             // required step 5 docs
             var requiredDocIds = new[] { 2, 3, 7 };
@@ -921,38 +2300,56 @@ namespace HIVTraining_Vue.Server.Controllers
                     return BadRequest(new { message = "Practicum details are incomplete." });
             }
 
-            // validate 4 exam completions
-            var requiredSubjectIds = PeerExamCourseMap.Keys.ToList();
-            var requiredScormIds = PeerExamCourseMap.Values.ToList();
+            // validate only mandatory exams based on selected tracks
+            var selectedTrackCodes = new List<string>();
 
-            var sessions = await _context.ScormAiccSessions
-                .AsNoTracking()
-                .Where(x => x.Userid == user.UserSysId && requiredScormIds.Contains(x.Scormid))
-                .GroupBy(x => x.Scormid)
-                .Select(g => g
-                    .OrderByDescending(x => x.Attempt)
-                    .ThenByDescending(x => x.Timemodified)
-                    .FirstOrDefault())
-                .ToListAsync();
+            if (peer.CertHiv == true) selectedTrackCodes.Add("HIV");
+            if (peer.CertHcv == true) selectedTrackCodes.Add("HCV");
+            if (peer.CertHr == true) selectedTrackCodes.Add("HR");
+            if (peer.CertPrep == true) selectedTrackCodes.Add("PREP");
+            // CJ currently has no mapped exam, so do not include it unless you add one
 
-            var completedScormIds = sessions
-                .Where(s => s != null &&
-                    (
-                        string.Equals(s.Scormstatus, "completed", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(s.Lessonstatus, "completed", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(s.Lessonstatus, "passed", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(s.Lessonstatus, "failed", StringComparison.OrdinalIgnoreCase)
-                    ))
-                .Select(s => s.Scormid)
+            var requiredScormIds = PeerExamCourseMap
+                .Where(x => selectedTrackCodes.Contains(x.Value.TrackCode))
+                .Select(x => x.Value.CourseSysId)
                 .Distinct()
                 .ToList();
 
-            if (completedScormIds.Count != requiredScormIds.Count)
-                return BadRequest(new { message = "Please complete all 4 certification exams before submitting." });
+            if (requiredScormIds.Any())
+            {
+                var sessions = await _context.ScormAiccSessions
+                    .AsNoTracking()
+                    .Where(x => x.Userid == user.UserSysId && requiredScormIds.Contains(x.Scormid))
+                    .GroupBy(x => x.Scormid)
+                    .Select(g => g
+                        .OrderByDescending(x => x.Attempt)
+                        .ThenByDescending(x => x.Timemodified)
+                        .FirstOrDefault())
+                    .ToListAsync();
+
+                var completedScormIds = sessions
+                    .Where(s => s != null &&
+                        (
+                            string.Equals(s.Scormstatus, "completed", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(s.Lessonstatus, "completed", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(s.Lessonstatus, "passed", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(s.Lessonstatus, "failed", StringComparison.OrdinalIgnoreCase)
+                        ))
+                    .Select(s => s.Scormid)
+                    .Distinct()
+                    .ToList();
+
+                if (completedScormIds.Count != requiredScormIds.Count)
+                    return BadRequest(new { message = "Please complete all mandatory certification exams before submitting." });
+            }
 
             // FINAL SUCCESS: activate only here
             peer.Active = true;
+            peer.ApplicationPercentage = 100;
+
             peer.DateModify = DateTime.UtcNow;
+
+
 
             await _context.SaveChangesAsync();
 
@@ -1121,7 +2518,6 @@ namespace HIVTraining_Vue.Server.Controllers
             if (doc == null || doc.Active != true)
                 return NotFound(new { message = "Document not found." });
 
-            // If this is ethics JSON stored in DocPath, do NOT try blob download
             if (!string.IsNullOrWhiteSpace(doc.DocPath) && doc.DocPath.TrimStart().StartsWith("{"))
                 return BadRequest(new { message = "This record is not a file upload." });
 

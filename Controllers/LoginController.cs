@@ -21,7 +21,10 @@ namespace HIVTraining_Vue.Server.Controllers
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly SignInManager<ApplicationUser> _signInManager;
 
-        public LoginController(UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager, ApplicationDbContext context)
+        public LoginController(
+            UserManager<ApplicationUser> userManager,
+            SignInManager<ApplicationUser> signInManager,
+            ApplicationDbContext context)
         {
             _context = context;
             _userManager = userManager;
@@ -31,6 +34,11 @@ namespace HIVTraining_Vue.Server.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest model)
         {
+            if (model == null || string.IsNullOrWhiteSpace(model.Email) || string.IsNullOrWhiteSpace(model.Password))
+            {
+                return BadRequest(new { message = "Email and password are required." });
+            }
+
             var user = await _userManager.FindByEmailAsync(model.Email);
 
             if (user == null || !await _userManager.CheckPasswordAsync(user, model.Password))
@@ -39,17 +47,19 @@ namespace HIVTraining_Vue.Server.Controllers
             }
 
             var userDetails = await _context.Users
-                .Where(u => u.Email == model.Email)
-                .FirstOrDefaultAsync();
+                .FirstOrDefaultAsync(u => u.Email == model.Email);
 
             if (userDetails == null)
             {
                 return Unauthorized(new { message = "User details not found" });
             }
 
-            // 🔥 Get user roles from Identity
+            // update AspNetUsers.LastLoginDate
+            user.LastLoginDate = DateTime.UtcNow;
+            await _userManager.UpdateAsync(user);
+
             var roles = await _userManager.GetRolesAsync(user);
-            var role = roles.FirstOrDefault() ?? "User"; // fallback role
+            var role = roles.FirstOrDefault() ?? "User";
 
             var token = GenerateJwtToken(user);
 
@@ -60,7 +70,7 @@ namespace HIVTraining_Vue.Server.Controllers
                 lastName = userDetails.LastName,
                 email = user.Email,
                 token = token,
-                role = role 
+                role = role
             });
         }
 
@@ -68,11 +78,12 @@ namespace HIVTraining_Vue.Server.Controllers
         {
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("Your_Secret_Key_Here"));
             var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
             var claims = new[]
             {
-                new Claim(JwtRegisteredClaimNames.Sub, user.Email),
+                new Claim(JwtRegisteredClaimNames.Sub, user.Email ?? ""),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-                new Claim(ClaimTypes.Name, user.UserName)
+                new Claim(ClaimTypes.Name, user.UserName ?? user.Email ?? "")
             };
 
             var token = new JwtSecurityToken(
@@ -88,8 +99,8 @@ namespace HIVTraining_Vue.Server.Controllers
 
         public class LoginRequest
         {
-            public string Email { get; set; }
-            public string Password { get; set; }
+            public string Email { get; set; } = "";
+            public string Password { get; set; } = "";
         }
     }
 }
