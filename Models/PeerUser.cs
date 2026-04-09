@@ -112,4 +112,5 @@ public partial class PeerUser
     public bool CertCriminalJustice { get; set; }
 
     public DateTime? CertCriminalJusticeDate { get; set; }
+    public int? ApplicationPercentage { get; set; }
 }

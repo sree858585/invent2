@@ -26,4 +26,6 @@ public partial class PeerDoc
     public bool Reviewed { get; set; }
 
     public int? CourseSysId { get; set; }
+
+    public decimal? NoOfCredits { get; set; }
 }

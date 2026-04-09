@@ -887,6 +887,9 @@ namespace HIVTraining_Vue.Data
                 entity.Property(e => e.PeerDocId).HasColumnName("PeerDocID");
                 entity.Property(e => e.PeerSysId).HasColumnName("PeerSysID");
                 entity.Property(e => e.UploadBy).HasMaxLength(100);
+
+                entity.Property(e => e.NoOfCredits)
+                    .HasColumnType("decimal(5,2)");
             });
 
             modelBuilder.Entity<PeerUser>(entity =>
@@ -896,62 +899,98 @@ namespace HIVTraining_Vue.Data
                 entity.ToTable("Peer_User");
 
                 entity.Property(e => e.PeerSysId).HasColumnName("PeerSysID");
+                entity.Property(e => e.UserSysId).HasColumnName("UserSysID");
+
                 entity.Property(e => e.Active).HasDefaultValue(true);
                 entity.Property(e => e.AgencyAffilation).HasMaxLength(2000);
                 entity.Property(e => e.ApplicantNumber).HasColumnName("Applicant_Number");
+
                 entity.Property(e => e.ApprovedBy).HasMaxLength(100);
                 entity.Property(e => e.ApprovedDt).HasColumnType("datetime");
-                entity.Property(e => e.CertCriminalJusticeDate).HasColumnType("datetime");
-                entity.Property(e => e.CertHcv)
-                    .HasDefaultValue(false)
-                    .HasColumnName("CertHCV");
-                entity.Property(e => e.CertHcvdate)
-                    .HasColumnType("datetime")
-                    .HasColumnName("CertHCVDate");
+
                 entity.Property(e => e.CertHiv)
                     .HasDefaultValue(false)
                     .HasColumnName("CertHIV");
+
                 entity.Property(e => e.CertHivdate)
                     .HasColumnType("datetime")
                     .HasColumnName("CertHIVDate");
+
+                entity.Property(e => e.CertHcv)
+                    .HasDefaultValue(false)
+                    .HasColumnName("CertHCV");
+
+                entity.Property(e => e.CertHcvdate)
+                    .HasColumnType("datetime")
+                    .HasColumnName("CertHCVDate");
+
                 entity.Property(e => e.CertHr)
                     .HasDefaultValue(false)
                     .HasColumnName("CertHR");
+
                 entity.Property(e => e.CertHrdate)
                     .HasColumnType("datetime")
                     .HasColumnName("CertHRDate");
-                entity.Property(e => e.CertPrepDate).HasColumnType("datetime");
+
+                entity.Property(e => e.CertPrep)
+                    .HasDefaultValue(false)
+                    .HasColumnName("CertPrep");
+
+                entity.Property(e => e.CertPrepDate)
+                    .HasColumnType("datetime")
+                    .HasColumnName("CertPrepDate");
+
+                entity.Property(e => e.CertCriminalJustice)
+                    .HasDefaultValue(false)
+                    .HasColumnName("CertCriminalJustice");
+
+                entity.Property(e => e.CertCriminalJusticeDate)
+                    .HasColumnType("datetime")
+                    .HasColumnName("CertCriminalJusticeDate");
+
                 entity.Property(e => e.ComplPracticum).HasDefaultValue(false);
                 entity.Property(e => e.ComplPracticumMin).HasDefaultValue(false);
+
                 entity.Property(e => e.DateCert).HasColumnType("datetime");
                 entity.Property(e => e.DateCompletion).HasColumnType("datetime");
+
                 entity.Property(e => e.DateCreate)
                     .HasDefaultValueSql("(getdate())")
                     .HasColumnType("datetime");
+
                 entity.Property(e => e.DateModify)
                     .HasDefaultValueSql("(getdate())")
                     .HasColumnType("datetime");
+
                 entity.Property(e => e.DisapprovedBy).HasMaxLength(100);
                 entity.Property(e => e.DisapprovedDt).HasColumnType("datetime");
                 entity.Property(e => e.DiscardDt).HasColumnType("datetime");
+
                 entity.Property(e => e.Dob)
                     .HasColumnType("datetime")
                     .HasColumnName("DOB");
+
                 entity.Property(e => e.ExperienceChallenges).HasMaxLength(2500);
                 entity.Property(e => e.ExperienceCommitment).HasMaxLength(2500);
                 entity.Property(e => e.ExperienceWhy).HasMaxLength(2500);
+
                 entity.Property(e => e.Hsdiploma)
                     .HasDefaultValue(false)
                     .HasColumnName("HSDiploma");
+
                 entity.Property(e => e.Notes).HasColumnType("text");
+
                 entity.Property(e => e.PracticumBdate)
                     .HasColumnType("datetime")
                     .HasColumnName("PracticumBDate");
+
                 entity.Property(e => e.PracticumEdate)
                     .HasColumnType("datetime")
                     .HasColumnName("PracticumEDate");
+
                 entity.Property(e => e.ReasonDisapprv).HasColumnType("text");
                 entity.Property(e => e.ReenterDt).HasColumnType("datetime");
+
                 entity.Property(e => e.SupvrContAddr1).HasMaxLength(300);
                 entity.Property(e => e.SupvrContAddr2).HasMaxLength(300);
                 entity.Property(e => e.SupvrContCity).HasMaxLength(100);
@@ -962,8 +1001,12 @@ namespace HIVTraining_Vue.Data
                 entity.Property(e => e.SupvrFirstName).HasMaxLength(100);
                 entity.Property(e => e.SupvrLastName).HasMaxLength(100);
                 entity.Property(e => e.SupvrOrgName).HasMaxLength(200);
+
+                entity.Property(e => e.ApplicationPercentage)
+    .HasColumnName("ApplicationPercentage")
+    .HasDefaultValue(0);
+
                 entity.Property(e => e.UserExper).HasColumnType("text");
-                entity.Property(e => e.UserSysId).HasColumnName("UserSysID");
             });
 
             modelBuilder.Entity<Site>(entity =>
