@@ -1678,22 +1678,29 @@ namespace HIVTraining_Vue.Server.Controllers
                 join u in _context.Users.AsNoTracking()
                     on p.UserSysId equals u.UserSysId
                 where d.Active == true && d.PeerDocId == ceDocType
+                group d by new
+                {
+                    p.PeerSysId,
+                    u.UserId,
+                    u.UserSysId,
+                    u.FirstName,
+                    u.LastName,
+                    u.Email
+                }
+                into g
                 select new
                 {
-                    peerDocSysId = d.PeerDocSysId,
-                    peerSysId = d.PeerSysId,
-                    userId = u.UserId,
-                    userSysId = u.UserSysId,
-                    firstName = u.FirstName,
-                    lastName = u.LastName,
-                    fullName = ((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim(),
-                    email = u.Email,
-                    fileName = d.DocPath != null
-                        ? (d.DocPath.Contains("/") ? d.DocPath.Substring(d.DocPath.LastIndexOf('/') + 1) : d.DocPath)
-                        : "",
-                    noOfCredits = d.NoOfCredits,
-                    dateUpload = d.DateUpload,
-                    reviewed = d.Reviewed
+                    peerSysId = g.Key.PeerSysId,
+                    userId = g.Key.UserId,
+                    userSysId = g.Key.UserSysId,
+                    firstName = g.Key.FirstName,
+                    lastName = g.Key.LastName,
+                    fullName = ((g.Key.FirstName ?? "") + " " + (g.Key.LastName ?? "")).Trim(),
+                    email = g.Key.Email,
+                    documentCount = g.Count(),
+                    totalCredits = g.Sum(x => x.NoOfCredits ?? 0),
+                    reviewedCount = g.Count(x => x.Reviewed == true),
+                    latestUploadDate = g.Max(x => x.DateUpload)
                 };
 
             if (!string.IsNullOrWhiteSpace(search))
@@ -1703,13 +1710,14 @@ namespace HIVTraining_Vue.Server.Controllers
                 query = query.Where(x =>
                     ((x.firstName ?? "").ToLower().Contains(term)) ||
                     ((x.lastName ?? "").ToLower().Contains(term)) ||
-                    (((x.firstName ?? "") + " " + (x.lastName ?? "")).ToLower().Contains(term)));
+                    (((x.firstName ?? "") + " " + (x.lastName ?? "")).ToLower().Contains(term)) ||
+                    ((x.email ?? "").ToLower().Contains(term)));
             }
 
             var totalRecords = await query.CountAsync();
 
             var items = await query
-                .OrderByDescending(x => x.dateUpload)
+                .OrderByDescending(x => x.latestUploadDate)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync();
@@ -1722,6 +1730,31 @@ namespace HIVTraining_Vue.Server.Controllers
                 items
             });
         }
+        [HttpGet("admin/manage-edu-credits/{peerSysId:int}/documents")]
+        public async Task<IActionResult> GetEduCreditDocumentsByPeer(int peerSysId)
+        {
+            const int ceDocType = 9;
+
+            var documents = await _context.PeerDocs
+                .AsNoTracking()
+                .Where(d => d.PeerSysId == peerSysId && d.Active == true && d.PeerDocId == ceDocType)
+                .OrderByDescending(d => d.DateUpload)
+                .Select(d => new
+                {
+                    peerDocSysId = d.PeerDocSysId,
+                    peerSysId = d.PeerSysId,
+                    fileName = d.DocPath != null
+                        ? (d.DocPath.Contains("/") ? d.DocPath.Substring(d.DocPath.LastIndexOf('/') + 1) : d.DocPath)
+                        : "",
+                    noOfCredits = d.NoOfCredits,
+                    dateUpload = d.DateUpload,
+                    reviewed = d.Reviewed
+                })
+                .ToListAsync();
+
+            return Ok(documents);
+        }
+
         [HttpPut("admin/manage-edu-credits/{peerDocSysId:int}/review")]
         public async Task<IActionResult> UpdateEduCreditReviewStatus(int peerDocSysId, [FromBody] JsonElement body)
         {
@@ -1886,10 +1919,11 @@ namespace HIVTraining_Vue.Server.Controllers
                     peerDocSysId = d.PeerDocSysId,
                     peerDocId = d.PeerDocId,
                     fileName = d.DocPath != null
-                        ? (d.DocPath.Contains("/") ? d.DocPath.Substring(d.DocPath.LastIndexOf('/') + 1) : d.DocPath)
-                        : "",
+        ? (d.DocPath.Contains("/") ? d.DocPath.Substring(d.DocPath.LastIndexOf('/') + 1) : d.DocPath)
+        : "",
                     noOfCredits = d.NoOfCredits,
-                    dateUpload = d.DateUpload
+                    dateUpload = d.DateUpload,
+                    reviewed = d.Reviewed
                 })
                 .ToListAsync();
 

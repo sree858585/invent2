@@ -7,6 +7,13 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 using System.Data;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
+using System;
+using System.IO;
+using Microsoft.AspNetCore.Hosting;
+using System.Globalization;
 
 namespace HIVTraining.Controllers
 {
@@ -15,10 +22,14 @@ namespace HIVTraining.Controllers
     public class CourseController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IWebHostEnvironment _env;
 
-        public CourseController(ApplicationDbContext context)
+
+        public CourseController(ApplicationDbContext context, IWebHostEnvironment env)
         {
             _context = context;
+            _env = env;
+
         }
 
         [HttpGet("FormatPaged/{format}")]
@@ -291,6 +302,139 @@ namespace HIVTraining.Controllers
             await _context.SaveChangesAsync();
         }
 
+        [HttpGet("certificate/{courseId}")]
+        public async Task<IActionResult> GetCertificate(int courseId, [FromQuery] Guid userId)
+        {
+            try
+            {
+                var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == userId);
+                if (user == null)
+                    return NotFound("User not found.");
+
+                var data = await (
+                    from uc in _context.UserCourses
+                    join c in _context.Courses on uc.CourseSysId equals c.CourseSysId
+                    join s in _context.Subjects on c.SubjectSysId equals s.SubjectSysId into subjJoin
+                    from subject in subjJoin.DefaultIfEmpty()
+                    where uc.UserSysId == user.UserSysId && uc.CourseSysId == courseId
+                    select new
+                    {
+                        uc.Status,
+                        uc.Attended,
+                        c.CourseDate,
+                        c.EndDate,
+                        c.Cancelled,
+                        SubjectTitle = subject != null ? subject.CourseTitle : "Training Course"
+                    }
+                ).FirstOrDefaultAsync();
+
+                if (data == null)
+                    return NotFound("Course not found.");
+
+                var eligible = data.Attended == true || data.Status == 3;
+                if (!eligible || data.Cancelled == true)
+                    return BadRequest("Certificate not available.");
+
+                var templatePath = Path.Combine(_env.ContentRootPath, "Assets", "Certificates", "template.jpg");
+
+                if (!System.IO.File.Exists(templatePath))
+                {
+                    return BadRequest(new
+                    {
+                        message = "Template not found",
+                        path = templatePath
+                    });
+                }
+
+                var userName = $"{user.FirstName} {user.LastName}".Trim();
+                var courseName = data.SubjectTitle ?? "Training Course";
+                var completionDate = (data.EndDate ?? data.CourseDate ?? DateTime.Today).ToString("M/d/yyyy", CultureInfo.InvariantCulture);
+                var trainingCenter = "AIDS Institute";
+
+                QuestPDF.Settings.License = LicenseType.Community;
+
+                var pdfBytes = Document.Create(container =>
+                {
+                    container.Page(page =>
+                    {
+                        page.Size(PageSizes.A4.Landscape());
+                        page.Margin(0);
+
+                        page.Content().Layers(layers =>
+                        {
+                            layers.PrimaryLayer()
+                                .Image(templatePath, ImageScaling.FitArea);
+
+                            layers.Layer()
+                                .TranslateY(155)
+                                .Width(PageSizes.A4.Landscape().Width)
+                                .AlignCenter()
+                                .Text($"This document acknowledges that {userName} has completed the following course:")
+                                .FontSize(15)
+                                .FontColor("#111111");
+
+                            layers.Layer()
+                                .TranslateY(200)
+                                .Width(PageSizes.A4.Landscape().Width)
+                                .AlignCenter()
+                                .Text(courseName)
+                                .FontSize(20)
+                                .SemiBold()
+                                .FontColor("#111111");
+
+                            layers.Layer()
+                                .TranslateY(280)
+                                .Width(PageSizes.A4.Landscape().Width)
+                                .AlignCenter()
+                                .Text(userName)
+                                .FontSize(22)
+                                .SemiBold()
+                                .FontColor("#111111");
+
+                            layers.Layer()
+                                .TranslateX(435)
+                                .TranslateY(455)
+                                .Width(170)
+                                .AlignCenter()
+                                .Text(completionDate)
+                                .FontSize(11)
+                                .FontColor("#111111");
+
+                            layers.Layer()
+                                .TranslateX(435)
+                                .TranslateY(510)
+                                .Width(170)
+                                .AlignCenter()
+                                .Text(trainingCenter)
+                                .FontSize(11)
+                                .FontColor("#111111");
+                        });
+                    });
+                }).GeneratePdf();
+                var safeFileName = string.Concat(courseName.Split(Path.GetInvalidFileNameChars()));
+                var isDownload = Request.Query.ContainsKey("download") &&
+                 Request.Query["download"] == "true";
+
+                if (isDownload)
+                {
+                    return File(pdfBytes, "application/pdf", $"Certificate_{safeFileName}.pdf");
+                }
+
+                Response.Headers["Content-Disposition"] =
+                    $"inline; filename=\"Certificate_{safeFileName}.pdf\"";
+
+                return File(pdfBytes, "application/pdf");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    message = "Failed to generate certificate",
+                    detail = ex.Message
+                });
+            }
+        }
+
 
         [HttpPost("register")]
         public async Task<IActionResult> RegisterCourse([FromBody] JsonElement body)
@@ -460,41 +604,46 @@ namespace HIVTraining.Controllers
             var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == userId);
             if (user == null) return NotFound(new { message = "User not found" });
 
-            var validStatuses = new List<int> { 1, 2, 3, 4 };
+            var validStatuses = new List<int> { 1, 2, 3, 4, 6 };
 
             var userCourses = await (
-                from uc in _context.UserCourses
-                join c in _context.Courses on uc.CourseSysId equals c.CourseSysId
-                join s in _context.Subjects on c.SubjectSysId equals s.SubjectSysId into subjJoin
-                from subject in subjJoin.DefaultIfEmpty()
-                where uc.UserSysId == user.UserSysId
-                   && uc.Status.HasValue
-                   && validStatuses.Contains(uc.Status.Value)
-                select new
-                {
-                    uc.CourseSysId,
-                    uc.Status,
-                    uc.IsWaitlisted,
-                    c.CourseDate,
-                    c.CourseTime,
-                    c.MaxSeats,
-                    c.Format,
-                    VideoUrl = subject != null ? subject.VideoUrl : null,
-                    IsOnlineTraining = subject != null && subject.IsOnlineTraining,
-                    SubjectTitle = subject.CourseTitle,
-                    SubjectDescription = subject.Description
-                }
-            ).ToListAsync();
+    from uc in _context.UserCourses
+    join c in _context.Courses on uc.CourseSysId equals c.CourseSysId
+    join s in _context.Subjects on c.SubjectSysId equals s.SubjectSysId into subjJoin
+    from subject in subjJoin.DefaultIfEmpty()
+    where uc.UserSysId == user.UserSysId
+       && uc.Status.HasValue
+       && validStatuses.Contains(uc.Status.Value)
+    select new
+    {
+        uc.CourseSysId,
+        uc.Status,
+        uc.IsWaitlisted,
+        uc.Attended,
+        c.CourseDate,
+        c.EndDate,
+        c.CourseTime,
+        c.MaxSeats,
+        c.Format,
+        c.Cancelled,            // add this
+        c.CancellReason,        // optional, useful later
+        VideoUrl = subject != null ? subject.VideoUrl : null,
+        IsOnlineTraining = subject != null && subject.IsOnlineTraining,
+        SubjectTitle = subject != null ? subject.CourseTitle : null,
+        SubjectDescription = subject != null ? subject.Description : null,
+        TitleImageUrl = subject != null && !string.IsNullOrEmpty(subject.TitleImagePath)
+            ? $"/api/TrainingTitle/{subject.SubjectSysId}/image"
+            : null
+    }
+).ToListAsync();
 
-            // Only SCORM courses need SCORM progress
             var scormCourseIds = userCourses
-     .Where(x => x.Format.HasValue && x.Format.Value == 2)
-     .Select(x => x.CourseSysId)
-     .Where(id => id > 0)
-     .Distinct()
-     .ToList(); // ✅ this becomes List<int>
+                .Where(x => x.Format.HasValue && x.Format.Value == 2)
+                .Select(x => x.CourseSysId)
+                .Where(id => id > 0)
+                .Distinct()
+                .ToList();
 
-            // Latest session per course (max Attempt)
             var lastSessions = await _context.ScormAiccSessions
                 .Where(s => s.Userid == user.UserSysId && scormCourseIds.Contains(s.Scormid))
                 .GroupBy(s => s.Scormid)
@@ -507,40 +656,45 @@ namespace HIVTraining.Controllers
                 .Where(s => s != null)
                 .ToDictionary(s => s!.Scormid, s => s!);
 
-            // Pull track values for those latest attempts (in one query)
-            var attempts = lastSessions.Where(s => s != null).Select(s => s!.Attempt).Distinct().ToList();
+            var attempts = lastSessions
+                .Where(s => s != null)
+                .Select(s => s!.Attempt)
+                .Distinct()
+                .ToList();
 
             var tracks = await _context.ScormScoesTracks
-    .Where(t => t.Userid.HasValue && t.Userid.Value == user.UserSysId
-             && t.Scormid.HasValue && scormCourseIds.Contains(t.Scormid.Value)
-             && t.Attempt.HasValue && attempts.Contains(t.Attempt.Value)
-             && (t.Element == "cmi.progress_measure"
-              || t.Element == "cmi.completion_status"
-              || t.Element == "cmi.success_status"
-              || t.Element == "cmi.core.lesson_status"
-              || t.Element == "cmi.core.score.raw"
-              || t.Element == "cmi.core.lesson_location"
-              || t.Element == "cmi.suspend_data"))   // ✅ add suspend_data too (useful)
-    .ToListAsync();
+                .Where(t => t.Userid.HasValue && t.Userid.Value == user.UserSysId
+                         && t.Scormid.HasValue && scormCourseIds.Contains(t.Scormid.Value)
+                         && t.Attempt.HasValue && attempts.Contains(t.Attempt.Value)
+                         && (t.Element == "cmi.progress_measure"
+                          || t.Element == "cmi.completion_status"
+                          || t.Element == "cmi.success_status"
+                          || t.Element == "cmi.core.lesson_status"
+                          || t.Element == "cmi.core.score.raw"
+                          || t.Element == "cmi.core.lesson_location"
+                          || t.Element == "cmi.suspend_data"))
+                .ToListAsync();
 
-            // Build a lookup: (scormId, attempt) -> latest value per element
             var trackLookup = tracks
-    .Where(t => t.Scormid.HasValue && t.Attempt.HasValue && !string.IsNullOrWhiteSpace(t.Element))
-    .GroupBy(t => new { Scormid = t.Scormid!.Value, Attempt = t.Attempt!.Value, Element = t.Element! })
-    .ToDictionary(
-        g => (g.Key.Scormid, g.Key.Attempt, g.Key.Element),
-        g => g.OrderByDescending(x => x.Timemodified ?? 0).First().Value
-    );
+                .Where(t => t.Scormid.HasValue && t.Attempt.HasValue && !string.IsNullOrWhiteSpace(t.Element))
+                .GroupBy(t => new { Scormid = t.Scormid!.Value, Attempt = t.Attempt!.Value, Element = t.Element! })
+                .ToDictionary(
+                    g => (g.Key.Scormid, g.Key.Attempt, g.Key.Element),
+                    g => g.OrderByDescending(x => x.Timemodified ?? 0).First().Value
+                );
 
             var formatDict = await _context.LkFormats
-    .AsNoTracking()
-    .ToDictionaryAsync(f => f.Code, f => f.Value);
+                .AsNoTracking()
+                .ToDictionaryAsync(f => f.Code, f => f.Value);
+
+            var completedOnlineCourseIdsToMarkAttended = new List<int>();
 
             object CourseDto(dynamic x)
             {
                 int progress = 0;
                 bool hasSession = false;
                 bool completed = false;
+                bool successfulCompletion = false;
                 string label = "Launch Course";
 
                 if (x.Format == 2)
@@ -552,11 +706,6 @@ namespace HIVTraining.Controllers
                     {
                         hasSession = true;
 
-                        completed =
-                            string.Equals(sess.Scormstatus, "completed", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(sess.Lessonstatus, "completed", StringComparison.OrdinalIgnoreCase);
-
-                        // session Attempt is int? in your model
                         int attempt = sess.Attempt ?? 0;
 
                         trackLookup.TryGetValue((sess.Scormid, attempt, "cmi.progress_measure"), out var pm);
@@ -569,30 +718,100 @@ namespace HIVTraining.Controllers
 
                         progress = ComputeProgressPercent(pm, cs, ls, ss, sr, ll, sd);
 
-                        if (completed || progress >= 100)
+                        var normalizedCompletionStatus = (cs ?? "").Trim().ToLowerInvariant();
+                        var normalizedSuccessStatus = (ss ?? "").Trim().ToLowerInvariant();
+                        var normalizedSessionScormStatus = (sess.Scormstatus ?? "").Trim().ToLowerInvariant();
+                        var normalizedSessionLessonStatus = (sess.Lessonstatus ?? "").Trim().ToLowerInvariant();
+
+                        successfulCompletion =
+                            progress >= 100 &&
+                            (
+                                normalizedSessionScormStatus == "completed" ||
+                                normalizedSessionLessonStatus == "completed" ||
+                                normalizedSessionLessonStatus == "passed" ||
+                                normalizedCompletionStatus == "completed" ||
+                                normalizedSuccessStatus == "passed"
+                            );
+
+                        completed = successfulCompletion;
+
+                        if (successfulCompletion)
                         {
                             progress = 100;
                             label = "Retake the course";
+                            completedOnlineCourseIdsToMarkAttended.Add((int)x.CourseSysId);
                         }
                         else
                         {
-                            label = (progress > 0) ? "Resume Course" : "Launch Course";
+                            label = progress > 0 ? "Resume Course" : "Launch Course";
                         }
                     }
                 }
 
-                int? fmt = x.Format as int?; // or: (int?)x.Format
+                int? fmt = x.Format as int?;
                 string? formatLabel = null;
 
                 if (fmt.HasValue && formatDict.TryGetValue(fmt.Value, out var lbl))
                     formatLabel = lbl;
+
+                var courseDate = x.CourseDate as DateTime?;
+                var endDate = x.EndDate as DateTime?;
+                var effectiveCourseEnd = endDate ?? courseDate;
+                var today = DateTime.Today;
+
+                string learningSection = "inProgress";
+
+                if (x.Cancelled == true || x.Status == 2)
+                {
+                    learningSection = "cancelled";
+                }
+                else if (x.Status == 6)
+                {
+                    learningSection = "dropped";
+                }
+                else if (x.Status == 4)
+                {
+                    learningSection = "absent";
+                }
+                else if (x.Format == 2)
+                {
+                    // Online / SCORM
+                    if (x.Attended == true || x.Status == 3 || successfulCompletion)
+                    {
+                        learningSection = "attended";
+                    }
+                    else
+                    {
+                        learningSection = "inProgress";
+                    }
+                }
+                else
+                {
+                    // Non-online formats
+                    if (x.Attended == true || x.Status == 3)
+                    {
+                        learningSection = "attended";
+                    }
+                    else if (effectiveCourseEnd.HasValue && effectiveCourseEnd.Value.Date < today)
+                    {
+                        learningSection = "absent";
+                    }
+                    else
+                    {
+                        learningSection = "inProgress";
+                    }
+                }
 
                 return new
                 {
                     x.CourseSysId,
                     x.Status,
                     x.IsWaitlisted,
+                    x.Attended,
+                    x.Cancelled,
+                    x.CancellReason,
                     x.CourseDate,
+                    x.EndDate,
                     x.CourseTime,
                     x.MaxSeats,
                     x.Format,
@@ -601,12 +820,48 @@ namespace HIVTraining.Controllers
                     x.IsOnlineTraining,
                     x.SubjectTitle,
                     x.SubjectDescription,
+                    x.TitleImageUrl,
 
                     ScormProgress = progress,
                     ScormHasSession = hasSession,
                     ScormCompleted = completed,
-                    ScormButtonLabel = label
+                    ScormButtonLabel = label,
+
+                    LearningSection = learningSection
                 };
+            }
+
+            var previewResult = userCourses.Select(x => CourseDto(x)).ToList();
+
+            if (completedOnlineCourseIdsToMarkAttended.Any())
+            {
+                var idsToUpdate = completedOnlineCourseIdsToMarkAttended.Distinct().ToList();
+
+                var userCourseRowsToUpdate = await _context.UserCourses
+                    .Where(uc =>
+                        uc.UserSysId == user.UserSysId &&
+                        idsToUpdate.Contains(uc.CourseSysId) &&
+                        uc.Status == 1 &&
+                        uc.Attended != true)
+                    .ToListAsync();
+
+                if (userCourseRowsToUpdate.Any())
+                {
+                    var now = DateTime.UtcNow;
+
+                    foreach (var row in userCourseRowsToUpdate)
+                    {
+                        row.Attended = true;
+                        row.Status = 3;
+                        row.DateModified = now;
+                        row.DateStatusChanged = now;
+                    }
+
+                    await _context.SaveChangesAsync();
+
+                    // re-run once so frontend gets latest status/section immediately
+                    return await GetUserCourses(userId);
+                }
             }
 
             var result = userCourses.Select(x => CourseDto(x)).ToList();
