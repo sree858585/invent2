@@ -162,6 +162,7 @@
                                     <th>File Name</th>
                                     <th>No. of Credits</th>
                                     <th>Date Uploaded</th>
+                                    <th>Review Status</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -170,6 +171,11 @@
                                     <td class="file-name-cell">{{ doc.fileName || "Document" }}</td>
                                     <td>{{ doc.noOfCredits ?? "—" }}</td>
                                     <td>{{ formatDate(doc.dateUpload) }}</td>
+                                    <td>
+                                        <span class="review-status" :class="doc.reviewed ? 'reviewed' : 'pending'">
+                                            {{ doc.reviewed ? "Reviewed" : "Pending Review" }}
+                                        </span>
+                                    </td>
                                     <td>
                                         <div class="row-actions">
                                             <button class="btn btn-secondary btn-sm" @click="downloadDoc(doc.peerDocSysId)">
@@ -836,4 +842,25 @@ async loadPage() {
         font-size: 16px;
         line-height: 1;
     }
+    .review-status {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 30px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 900;
+        white-space: nowrap;
+    }
+
+        .review-status.reviewed {
+            background: rgba(6, 95, 70, 0.10);
+            color: #065f46;
+        }
+
+        .review-status.pending {
+            background: rgba(245, 158, 11, 0.16);
+            color: #92400e;
+        }
 </style>

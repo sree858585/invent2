@@ -78,46 +78,35 @@
                             <tr>
                                 <th>User Name</th>
                                 <th>Email</th>
-                                <th>File Name</th>
-                                <th>No. of Credits</th>
-                                <th>Uploaded Date</th>
-                                <th>View Document</th>
+                                <th>No. of Documents</th>
+                                <th>Total Credits</th>
                                 <th>Reviewed</th>
+                                <th>Latest Upload</th>
+                                <th>Action</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="row in credits" :key="row.peerDocSysId">
+                            <tr v-for="row in credits" :key="row.peerSysId" class="clickable-row" @click="openDocumentsModal(row)">
                                 <td>
                                     <div class="name-cell">
-                                        <button class="peer-detail-btn" @click="openPeerDetail(row)">
-                                            Peer Detail
-                                        </button>
-
+                                        <div class="name-avatar">{{ getInitials(row.fullName) }}</div>
                                         <div>
                                             <div class="name-text">{{ row.fullName || "—" }}</div>
-                                            <div class="name-subtext">Peer Doc ID: {{ row.peerDocSysId }}</div>
+                                            <div class="name-subtext">Peer ID: {{ row.peerSysId }}</div>
                                         </div>
                                     </div>
                                 </td>
 
                                 <td>{{ row.email || "—" }}</td>
-                                <td>{{ row.fileName || "Document" }}</td>
-                                <td>{{ row.noOfCredits ?? "—" }}</td>
-                                <td>{{ formatDate(row.dateUpload) }}</td>
+                                <td>{{ row.documentCount }}</td>
+                                <td>{{ row.totalCredits ?? "—" }}</td>
+                                <td>{{ row.reviewedCount }} / {{ row.documentCount }}</td>
+                                <td>{{ formatDate(row.latestUploadDate) }}</td>
 
                                 <td>
-                                    <button class="btn btn-secondary btn-sm" @click="viewDocument(row.peerDocSysId)">
-                                        View
+                                    <button class="btn btn-secondary btn-sm" @click.stop="openDocumentsModal(row)">
+                                        View Documents
                                     </button>
-                                </td>
-
-                                <td>
-                                    <label class="switch">
-                                        <input type="checkbox"
-                                               :checked="row.reviewed"
-                                               @change="toggleReviewed(row)" />
-                                        <span class="slider"></span>
-                                    </label>
                                 </td>
                             </tr>
                         </tbody>
@@ -155,6 +144,61 @@
             </div>
         </div>
     </div>
+    <div v-if="showDocumentsModal" class="modal-overlay" @click.self="closeDocumentsModal">
+        <div class="documents-modal">
+            <div class="modal-header">
+                <div>
+                    <h2>{{ selectedUser?.fullName }}</h2>
+                    <p>{{ selectedUser?.email }} • {{ selectedUser?.documentCount }} document(s)</p>
+                </div>
+
+                <button class="modal-close" @click="closeDocumentsModal">✕</button>
+            </div>
+
+            <div v-if="documentsLoading" class="state-box">
+                Loading documents...
+            </div>
+
+            <div v-else-if="selectedDocuments.length === 0" class="state-box">
+                No documents found.
+            </div>
+
+            <div v-else class="table-wrap">
+                <table class="credit-table">
+                    <thead>
+                        <tr>
+                            <th>File Name</th>
+                            <th>No. of Credits</th>
+                            <th>Uploaded Date</th>
+                            <th>View</th>
+                            <th>Reviewed</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        <tr v-for="doc in selectedDocuments" :key="doc.peerDocSysId">
+                            <td>{{ doc.fileName || "Document" }}</td>
+                            <td>{{ doc.noOfCredits ?? "—" }}</td>
+                            <td>{{ formatDate(doc.dateUpload) }}</td>
+                            <td>
+                                <button class="btn btn-secondary btn-sm" @click="viewDocument(doc.peerDocSysId)">
+                                    View
+                                </button>
+                            </td>
+                            <td>
+                                <label class="switch">
+                                    <input type="checkbox"
+                                           :checked="doc.reviewed"
+                                           @change="toggleReviewed(doc)" />
+                                    <span class="slider"></span>
+                                </label>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </template>
 
 <script>
@@ -171,7 +215,11 @@
                 searchText: "",
                 currentPage: 1,
                 pageSize: 10,
-                totalRecords: 0
+                totalRecords: 0,
+    selectedUser: null,
+showDocumentsModal: false,
+documentsLoading: false,
+selectedDocuments: []
             };
         },
 
@@ -191,8 +239,8 @@
             },
 
             reviewedCount() {
-                return this.credits.filter(x => x.reviewed === true).length;
-            },
+    return this.credits.reduce((total, x) => total + (x.reviewedCount || 0), 0);
+},
 
             visiblePages() {
                 const total = this.totalPages;
@@ -230,6 +278,30 @@
                 if (data && Array.isArray(data.$values)) return data.$values;
                 return [];
             },
+    async openDocumentsModal(row) {
+    this.selectedUser = row;
+    this.showDocumentsModal = true;
+    this.selectedDocuments = [];
+    this.documentsLoading = true;
+
+    try {
+        const res = await apiClient.get(
+            `/PeerCertification/admin/manage-edu-credits/${row.peerSysId}/documents`
+        );
+
+        this.selectedDocuments = this.unwrapList(res.data);
+    } catch (err) {
+        alert("Unable to load documents.");
+    } finally {
+        this.documentsLoading = false;
+    }
+},
+
+closeDocumentsModal() {
+    this.showDocumentsModal = false;
+    this.selectedUser = null;
+    this.selectedDocuments = [];
+},
             openPeerDetail(row) {
                 this.$router.push(`/peer-management/manage-peer/${row.userId}`);
             },
@@ -273,29 +345,37 @@
 },
 
             async toggleReviewed(row) {
-                const newValue = !row.reviewed;
-                const oldValue = row.reviewed;
-                row.reviewed = newValue;
+    const newValue = !row.reviewed;
+    const oldValue = row.reviewed;
+    row.reviewed = newValue;
 
-                try {
-                    const response = await fetch(`/api/PeerCertification/admin/manage-edu-credits/${row.peerDocSysId}/review`, {
-                        method: "PUT",
-                        
-                        body: JSON.stringify({
-                            reviewed: newValue
-                        })
-                    });
+    try {
+        await apiClient.put(
+            `/PeerCertification/admin/manage-edu-credits/${row.peerDocSysId}/review`,
+            { reviewed: newValue }
+        );
 
-                    if (!response.ok) {
-                        row.reviewed = oldValue;
-                        const message = await response.text();
-                        throw new Error(message || "Failed to update review status.");
-                    }
-                } catch (error) {
-                    row.reviewed = oldValue;
-                    alert(error?.message || "Unable to update review status.");
-                }
-            },
+        // refresh main user summary count also
+        await this.fetchCredits();
+
+        // keep modal open and reload documents for selected user
+        if (this.selectedUser?.peerSysId) {
+            const res = await apiClient.get(
+                `/PeerCertification/admin/manage-edu-credits/${this.selectedUser.peerSysId}/documents`
+            );
+            this.selectedDocuments = this.unwrapList(res.data);
+        }
+    } catch (error) {
+        row.reviewed = oldValue;
+
+        alert(
+            error?.response?.data?.message ||
+            error?.response?.data ||
+            error?.message ||
+            "Unable to update review status."
+        );
+    }
+},
 
             handleSearchInput() {
                 this.currentPage = 1;
@@ -764,4 +844,79 @@
             background: #51316f;
             transform: translateY(-1px);
         }
+    .clickable-row {
+        cursor: pointer;
+    }
+
+        .clickable-row:hover {
+            background: #f3ecfb !important;
+        }
+
+    .name-avatar {
+        width: 42px;
+        height: 42px;
+        min-width: 42px;
+        border-radius: 999px;
+        background: rgba(67, 40, 93, 0.1);
+        color: #43285d;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 900;
+        font-size: 13px;
+    }
+
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 3000;
+        padding: 24px;
+    }
+
+    .documents-modal {
+        width: min(1100px, 96vw);
+        max-height: 90vh;
+        overflow-y: auto;
+        background: #ffffff;
+        border-radius: 24px;
+        padding: 24px;
+        box-shadow: 0 30px 80px rgba(15, 23, 42, 0.28);
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        margin-bottom: 18px;
+    }
+
+        .modal-header h2 {
+            margin: 0 0 6px;
+            font-size: 24px;
+            font-weight: 900;
+            color: #1f1630;
+        }
+
+        .modal-header p {
+            margin: 0;
+            color: #667085;
+            font-size: 15px;
+        }
+
+    .modal-close {
+        border: none;
+        background: #f3f4f6;
+        color: #111827;
+        width: 40px;
+        height: 40px;
+        border-radius: 999px;
+        cursor: pointer;
+        font-weight: 900;
+    }
 </style>

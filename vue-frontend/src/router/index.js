@@ -21,6 +21,7 @@ import HomeBannersAdmin from "@/components/HomeBannersAdmin.vue";
 import ManagePeer from "@/components/ManagePeer.vue";
 import ManageEduCredits from "@/components/ManageEduCredits.vue";
 import ManagePeerDetail from "@/components/ManagePeerDetail.vue";
+import MyCertificates from "@/components/MyCertificates.vue";
 
 import CustomCalendarEventsAdmin from "@/components/CustomCalendarEventsAdmin.vue";
 
@@ -67,6 +68,16 @@ const routes = [
         path: "/peer-certification",
         name: "PeerCertification",
         component: PeerCertification,
+    },
+    {
+        path: "/my-certificates",
+        name: "MyCertificates",
+        component: MyCertificates,
+        beforeEnter: (to, from, next) => {
+            const isAuthenticated = !!localStorage.getItem("jwtToken");
+            if (!isAuthenticated) next("/home");
+            else next();
+        },
     },
     {
         path: "/trending",
