@@ -1,7 +1,7 @@
 ﻿<template>
-    <div class="my-learnings-page">
+    <div :class="['my-learnings-page', { 'playing-mode': isPlaying }]">
         <!-- PLAYER MODE -->
-        <div v-if="isPlaying" class="player-wrap">
+        <div v-if="isPlaying" class="player-fullscreen-wrap">
             <ScormPlayer :launchUrl="player.launchUrl"
                          :registrationId="player.registrationId"
                          :scoId="player.scoId"
@@ -195,11 +195,11 @@
     import ScormPlayer from "@/components/ScormPlayer.vue";
     import CourseDetailsModal from "@/components/Modals/CourseViewModal.vue";
 
-    import img1 from "@/assets/images/img1.jpeg";
-    import img2 from "@/assets/images/img2.jpeg";
-    import img3 from "@/assets/images/img3.jpeg";
-    import img4 from "@/assets/images/img4.jpeg";
-    import img5 from "@/assets/images/img5.jpeg";
+    import img1 from "@/assets/images/img1.jpg";
+    import img2 from "@/assets/images/img2.jpg";
+    import img3 from "@/assets/images/img3.jpg";
+    import img4 from "@/assets/images/img4.jpg";
+    import img5 from "@/assets/images/img5.jpg";
 
     export default {
         components: {
@@ -297,12 +297,18 @@
                 }
 
                 if (!c.videoUrl) {
-                    alert("SCORM URL (VideoURL) is missing for this training.");
-                    return;
-                }
 
-                const base = (process.env.BASE_URL || "/").replace(/\/$/, "");
-                const launchUrl = `${base}${c.videoUrl}`;
+    alert("SCORM launch URL is missing for this training.");
+
+    return;
+
+}
+
+const launchUrl = c.videoUrl.startsWith("http")
+    ? c.videoUrl
+    : c.videoUrl.startsWith("/")
+        ? c.videoUrl
+        : `/${c.videoUrl}`;
 
                 const userId = localStorage.getItem("userId");
                 if (!userId) {
@@ -408,6 +414,7 @@
                     const res = await apiClient.get(`/Course/user-courses/${userId}`);
                     this.allCourses = (res.data?.$values || res.data || []).map(c => ({
                         ...c,
+        videoUrl: c.videoUrl ?? c.VideoUrl ?? null,
                         formatLabel: c.formatLabel ?? c.FormatLabel ?? null,
                         titleImageUrl: c.titleImageUrl ?? c.TitleImageUrl ?? null,
                         learningSection: c.learningSection ?? c.LearningSection ?? "inProgress",
@@ -456,12 +463,7 @@
     };</script>
 
 <style scoped>
-    .my-learnings-page {
-        padding: 28px;
-        background: linear-gradient(180deg, #f6f7fb 0%, #eef2f7 100%);
-        min-height: 100vh;
-    }
-
+    
     .player-wrap {
         min-height: 80vh;
     }
@@ -884,9 +886,7 @@
     }
 
     @media (max-width: 768px) {
-        .my-learnings-page {
-            padding: 16px;
-        }
+       
 
         .page-title {
             font-size: 1.6rem;
@@ -1006,4 +1006,23 @@
         border: none;
         background: white;
     }
+    .player-fullscreen-wrap {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 99999;
+        background: #ffffff;
+    }
+    .my-learnings-page {
+        padding: 28px;
+        background: linear-gradient(180deg, #f6f7fb 0%, #eef2f7 100%);
+        min-height: 100vh;
+    }
+
+        .my-learnings-page.playing-mode {
+            padding: 0;
+            background: #ffffff;
+        }
 </style>

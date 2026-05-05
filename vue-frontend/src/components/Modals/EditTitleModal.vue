@@ -203,14 +203,27 @@
                         </div>
                     </div>
 
-                    <div class="form-group">
+                    <div class="form-group" v-if="form.isOnlineTraining === 'true'">
                         <label>
-                            WebCast / Online Training URL
-                            <span v-if="form.isOnlineTraining === 'true'" class="required">*</span>
+                            Replace SCORM Package ZIP <span class="muted">(optional)</span>
                         </label>
-                        <input v-model="form.videoUrl"
-                               :required="form.isOnlineTraining === 'true'"
-                               :class="{ 'required-border': form.isOnlineTraining === 'true' && !form.videoUrl }" />
+
+                        <input ref="scormInput"
+                               type="file"
+                               accept=".zip,application/zip,application/x-zip-compressed"
+                               @change="onScormSelected" />
+
+                        <small class="hint" v-if="hasScormPackage">
+                            Current SCORM package already exists. Upload a new ZIP only if you want to replace it.
+                        </small>
+
+                        <small class="hint" v-else>
+                            No SCORM package found. Upload a SCORM ZIP package.
+                        </small>
+
+                        <small v-if="scormError" class="error-text">
+                            {{ scormError }}
+                        </small>
                     </div>
 
                     <div class="form-group" v-if="form.isOnlineTraining === 'true'">
@@ -262,7 +275,10 @@
   currentImageUrl: "",
   newImageFile: null,
   newImagePreviewUrl: "",
-  imageError: ""
+  imageError: "",
+  scormZipFile: null,
+scormError: "",
+hasScormPackage: false,
             };
         },
         async mounted() {
@@ -299,6 +315,8 @@
                     : null
             };
 this.hasCurrentImage = !!data.hasTitleImage || !!data.titleImagePath;
+this.hasScormPackage =
+  !!data.videoUrl && data.videoUrl.includes("/api/TrainingTitle/scorm-launch/");
 
 // set image url if available
 if (this.hasCurrentImage) {
@@ -309,6 +327,37 @@ if (this.hasCurrentImage) {
 
         openFilePicker() {
   this.$refs.fileInput?.click();
+},
+onScormSelected(e) {
+  this.scormError = "";
+  const file = e.target.files?.[0] || null;
+
+  if (!file) {
+    this.scormZipFile = null;
+    return;
+  }
+
+  const isZip =
+    file.name.toLowerCase().endsWith(".zip") ||
+    file.type === "application/zip" ||
+    file.type === "application/x-zip-compressed";
+
+  if (!isZip) {
+    this.scormError = "Please upload a valid SCORM ZIP file.";
+    this.scormZipFile = null;
+    if (this.$refs.scormInput) this.$refs.scormInput.value = "";
+    return;
+  }
+
+  const maxBytes = 200 * 1024 * 1024;
+  if (file.size > maxBytes) {
+    this.scormError = "SCORM package is too large. Max allowed is 200MB.";
+    this.scormZipFile = null;
+    if (this.$refs.scormInput) this.$refs.scormInput.value = "";
+    return;
+  }
+
+  this.scormZipFile = file;
 },
 
 refreshCurrentImage() {
@@ -377,10 +426,14 @@ onDropImage(e) {
     this.topicError = false;
 
     // ✅ Online URL required if online
-    if (this.form.isOnlineTraining === "true" && !this.form.videoUrl?.trim()) {
-      alert("Please provide a WebCast or Online Training URL.");
-      return;
-    }
+   if (
+  this.form.isOnlineTraining === "true" &&
+  !this.hasScormPackage &&
+  !this.scormZipFile
+) {
+  alert("Please upload a SCORM ZIP package.");
+  return;
+}
 
     // ✅ 1) Update title data
     const payload = {
@@ -413,6 +466,17 @@ onDropImage(e) {
       this.refreshCurrentImage();
       this.clearNewImage();
     }
+
+    if (this.form.isOnlineTraining === "true" && this.scormZipFile) {
+  const scormFd = new FormData();
+  scormFd.append("file", this.scormZipFile);
+
+  await apiClient.post(`/TrainingTitle/${this.form.subjectSysId}/scorm-package`, scormFd, {
+    headers: { "Content-Type": "multipart/form-data" }
+  });
+
+  this.hasScormPackage = true;
+}
 
     alert("Training title updated successfully!");
     this.$emit("updated");

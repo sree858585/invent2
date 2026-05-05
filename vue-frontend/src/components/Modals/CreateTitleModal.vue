@@ -170,17 +170,24 @@
                         </div>
                     </div>
 
-                    <div class="form-group">
+                    <div class="form-group" v-if="form.isOnlineTraining">
                         <label>
-                            WebCast / Online Training URL
-                            <span v-if="form.isOnlineTraining" class="required">*</span>
+                            SCORM Package ZIP <span class="required">*</span>
                         </label>
 
-                        <input v-model.trim="form.videoUrl"
-                               type="text"
-                               placeholder="Enter webcast or training URL"
-                               :required="form.isOnlineTraining"
-                               :class="{ 'required-border': form.isOnlineTraining && !form.videoUrl }" />
+                        <input ref="scormInput"
+                               type="file"
+                               accept=".zip,application/zip,application/x-zip-compressed"
+                               @change="onScormSelected"
+                               :class="{ 'required-border': form.isOnlineTraining && !scormZipFile }" />
+
+                        <small class="hint">
+                            Upload the SCORM ZIP package. The system will store and prepare it for launch.
+                        </small>
+
+                        <small v-if="scormError" class="error-text">
+                            {{ scormError }}
+                        </small>
                     </div>
 
                     <div class="form-group" v-if="form.isOnlineTraining">
@@ -205,29 +212,31 @@ export default {
   components: { QuillEditor },
   emits: ["close", "created"],
   data() {
-    return {
-      form: {
-        courseTitle: "",
-        description: "",
-        topicCodes: [],
-        cnecredits: false,
-        oasascredits: false,
-        certDescription: "",
-        miscCertDesc: "",
-        videoUrl: "",
-        isOnlineTraining: false,
-        markAsNewUntil: null,
-      },
+  return {
+    form: {
+      courseTitle: "",
+      description: "",
+      topicCodes: [],
+      cnecredits: false,
+      oasascredits: false,
+      certDescription: "",
+      miscCertDesc: "",
+      videoUrl: "",
+      isOnlineTraining: false,
+      markAsNewUntil: null,
+    },
 
-      topics: [],
-      topicError: false,
+    topics: [],
+    topicError: false,
 
-      // ✅ image state
-      titleImageFile: null,
-      imagePreviewUrl: "",
-      imageError: "",
-    };
-  },
+    titleImageFile: null,
+    imagePreviewUrl: "",
+    imageError: "",
+
+    scormZipFile: null,
+    scormError: "",
+  };
+},
 
   async mounted() {
     const res = await apiClient.get("/Lookup/topics");
@@ -247,6 +256,37 @@ export default {
     this.$refs.fileInput.value = null; 
   }
   this.$refs.fileInput?.click();
+},
+onScormSelected(e) {
+    this.scormError = "";
+    const file = e.target.files?.[0] || null;
+
+    if (!file) {
+        this.scormZipFile = null;
+        return;
+    }
+
+    const isZip =
+        file.name.toLowerCase().endsWith(".zip") ||
+        file.type === "application/zip" ||
+        file.type === "application/x-zip-compressed";
+
+    if (!isZip) {
+        this.scormError = "Please upload a valid SCORM ZIP file.";
+        this.scormZipFile = null;
+        if (this.$refs.scormInput) this.$refs.scormInput.value = "";
+        return;
+    }
+
+    const maxBytes = 200 * 1024 * 1024; // 200MB
+    if (file.size > maxBytes) {
+        this.scormError = "SCORM package is too large. Max allowed is 200MB.";
+        this.scormZipFile = null;
+        if (this.$refs.scormInput) this.$refs.scormInput.value = "";
+        return;
+    }
+
+    this.scormZipFile = file;
 },
 
     onImageSelected(e) {
@@ -305,10 +345,10 @@ export default {
         this.topicError = false;
 
         // ✅ Online training URL required if online
-        if (this.form.isOnlineTraining && !this.form.videoUrl?.trim()) {
-          alert("Please provide a WebCast or Online Training URL.");
-          return;
-        }
+        if (this.form.isOnlineTraining && !this.scormZipFile) {
+    alert("Please upload a SCORM ZIP package.");
+    return;
+}
 
         // 1) Create Title (JSON)
         const payload = {
@@ -336,6 +376,15 @@ export default {
             headers: { "Content-Type": "multipart/form-data" },
           });
         }
+
+        if (subjectId && this.form.isOnlineTraining && this.scormZipFile) {
+    const scormFd = new FormData();
+    scormFd.append("file", this.scormZipFile);
+
+    await apiClient.post(`/TrainingTitle/${subjectId}/scorm-package`, scormFd, {
+        headers: { "Content-Type": "multipart/form-data" },
+    });
+}
 
         alert(res.data?.message || "Training title created successfully!");
         this.$emit("created");

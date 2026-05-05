@@ -10,8 +10,12 @@
 
             <!-- Main content -->
             <div class="content">
+
                 <router-view />
+
             </div>
+
+            <HelpAssistant />
         </div>
 
         <!-- Login Modal -->
@@ -32,6 +36,7 @@
     import RegistrationModal from "@/components/RegistrationModal.vue";
     import eventBus from "@/eventBus.js";
     import MainHeader from "@/components/MainHeader.vue";
+    import HelpAssistant from "@/components/HelpAssistant.vue";
 
     export default {
         name: "App",
@@ -41,6 +46,7 @@
             LoginComponent,
             RegistrationModal,
             MainHeader,
+                HelpAssistant
         },
         data() {
             return {
@@ -126,4 +132,5 @@
         background-color: #000; /* Set to black (or your design color) */
         color: white;
     }
+   
 </style>

@@ -1,8 +1,13 @@
 ﻿<template>
     <div class="scorm-container">
         <header class="scorm-toolbar">
-            <button class="back-btn" @click="handleBackClick">← Back</button>
-            <div class="title">{{ title || "Course Player" }}</div>
+            <button class="back-btn" @click="handleBackClick">← Back to My Learnings</button>
+
+            <div class="title-wrap">
+                <div class="eyebrow">Online Training</div>
+                <div class="title">{{ title || "Course Player" }}</div>
+            </div>
+
             <div class="spacer"></div>
         </header>
 
@@ -512,35 +517,64 @@
 
 <style scoped>
     .scorm-container {
+        height: 100vh;
+        width: 100vw;
+        background: #ffffff;
         display: flex;
         flex-direction: column;
-        height: 100%;
-        background: #fff;
-        border-radius: 16px;
-        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
         overflow: hidden;
+        border-radius: 0;
+        box-shadow: none;
     }
 
     .scorm-toolbar {
+        height: 64px;
         display: flex;
         align-items: center;
-        gap: 12px;
-        padding: 10px 14px;
-        border-bottom: 1px solid #eee;
-        background: #f9fafb;
+        gap: 16px;
+        padding: 0 22px;
+        background: #ffffff;
+        border-bottom: 1px solid #e5e7eb;
+        box-shadow: 0 4px 18px rgba(15, 23, 42, 0.06);
+        z-index: 2;
     }
 
     .back-btn {
-        border: none;
-        background: #e5e7eb;
-        padding: 8px 12px;
-        border-radius: 10px;
-        font-weight: 600;
+        border: 1px solid #d8dee8;
+        background: #ffffff;
+        color: #344054;
+        padding: 10px 16px;
+        border-radius: 999px;
+        font-weight: 800;
         cursor: pointer;
     }
 
+        .back-btn:hover {
+            background: #f4f0fa;
+            color: #43285d;
+            border-color: #43285d;
+        }
+
+    .title-wrap {
+        min-width: 0;
+    }
+
+    .eyebrow {
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #7b61a5;
+    }
+
     .title {
-        font-weight: 700;
+        font-size: 16px;
+        font-weight: 800;
+        color: #172033;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 720px;
     }
 
     .spacer {
@@ -549,13 +583,16 @@
 
     .scorm-stage {
         flex: 1;
-        min-height: 60vh;
-        max-height: calc(100vh - 60px);
+        padding: 0;
+        background: #ffffff;
+        overflow: hidden;
     }
 
     .scorm-iframe {
         width: 100%;
-        height: calc(100vh - 56px);
+        height: calc(100vh - 64px);
         border: 0;
+        display: block;
+        background: #ffffff;
     }
 </style>

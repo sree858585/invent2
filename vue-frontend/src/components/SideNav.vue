@@ -139,16 +139,16 @@
 
                     <!-- ✅ ATTENDANCE MANAGEMENT: Only for Admin/Manager -->
                     <!--<li v-if="isUserLoggedIn && isAdminOrManager">
-        <div class="dropdown-header" @click="toggleSection('attendance')">
-            <span class="icon">📝</span>
-            <span v-show="isExpanded">Attendance Management</span>
-            <span class="dropdown-arrow" :class="{ rotated: sections.attendance }">▼</span>
-        </div>
-        <ul v-if="sections.attendance && isExpanded" class="dropdown-menu">
-            <li><router-link to="/attendance/mark">Mark Attendance</router-link></li>
-            <li><router-link to="/attendance/view">View Attendance</router-link></li>
-        </ul>
-    </li>-->
+                <div class="dropdown-header" @click="toggleSection('attendance')">
+                    <span class="icon">📝</span>
+                    <span v-show="isExpanded">Attendance Management</span>
+                    <span class="dropdown-arrow" :class="{ rotated: sections.attendance }">▼</span>
+                </div>
+                <ul v-if="sections.attendance && isExpanded" class="dropdown-menu">
+                    <li><router-link to="/attendance/mark">Mark Attendance</router-link></li>
+                    <li><router-link to="/attendance/view">View Attendance</router-link></li>
+                </ul>
+            </li>-->
                     <!-- ✅ ROLE MANAGEMENT (Unified page for Admin + Manager) -->
                     <li v-if="isUserLoggedIn && isAdminOrManager">
                         <router-link to="/role-management" class="nav-item-link">
@@ -164,7 +164,6 @@
 
                 </ul>
             </div>
-
             <!-- Hamburger Button -->
             <div class="hamburger-button" @click="toggleSidenav">
                 <span>&#9776;</span>
@@ -174,9 +173,10 @@
 </template>
 
 <script>import eventBus from "@/eventBus.js";
+
     export default {
         name: "SideNav",
-        data() {
+         data() {
             return {
                 isExpanded: true,
                 showProfileDropdown: false,
@@ -520,8 +520,6 @@
     .sidenav-scrollable {
         flex: 1;
         overflow-y: auto;
-        max-height: 100vh;
-        padding-bottom: 20px;
     }
 
     /* add inside <style scoped> in SideNav.vue    new css  */
