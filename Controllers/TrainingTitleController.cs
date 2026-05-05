@@ -11,7 +11,7 @@ using Azure.Storage.Blobs.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
 using System.IO;
-
+using System.IO.Compression;
 namespace HIVTraining_Vue.Server.Controllers
 {
     [Route("api/[controller]")]
@@ -22,6 +22,10 @@ namespace HIVTraining_Vue.Server.Controllers
         private readonly BlobContainerClient _titleImageContainer;
         private bool _titleImageContainerReady = false;
 
+        private readonly BlobContainerClient _scormContainer;
+        private bool _scormContainerReady = false;
+
+
         public TrainingTitleController(ApplicationDbContext context, IConfiguration config)
         {
             _context = context;
@@ -31,6 +35,9 @@ namespace HIVTraining_Vue.Server.Controllers
 
             var serviceClient = new BlobServiceClient(cs);
             _titleImageContainer = serviceClient.GetBlobContainerClient(containerName);
+
+            var scormContainerName = config["Storage:ScormContainerName"] ?? "scorm-packages";
+            _scormContainer = serviceClient.GetBlobContainerClient(scormContainerName);
         }
 
         private async Task EnsureTitleImageContainerAsync()
@@ -39,6 +46,14 @@ namespace HIVTraining_Vue.Server.Controllers
 
             await _titleImageContainer.CreateIfNotExistsAsync(PublicAccessType.None);
             _titleImageContainerReady = true;
+        }
+
+        private async Task EnsureScormContainerAsync()
+        {
+            if (_scormContainerReady) return;
+
+            await _scormContainer.CreateIfNotExistsAsync(PublicAccessType.None);
+            _scormContainerReady = true;
         }
 
         private static readonly string[] AllowedImageExt = new[] { ".png", ".jpg", ".jpeg", ".webp" };
@@ -98,6 +113,185 @@ namespace HIVTraining_Vue.Server.Controllers
 
             return Ok(new { message = "Image uploaded!", subjectId, blobName });
         }
+
+        [HttpPost("{subjectId:int}/scorm-package")]
+        [RequestSizeLimit(200 * 1024 * 1024)]
+        public async Task<IActionResult> UploadScormPackage(int subjectId, [FromForm] IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest(new { message = "No SCORM package uploaded." });
+
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (ext != ".zip")
+                return BadRequest(new { message = "Only ZIP files are allowed for SCORM packages." });
+
+            var subject = await _context.Subjects.FirstOrDefaultAsync(s => s.SubjectSysId == subjectId);
+            if (subject == null)
+                return NotFound(new { message = "Training title not found." });
+
+            await EnsureScormContainerAsync();
+
+            var packageFolder = $"scorm/{subjectId}/{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}";
+            var zipBlobName = $"{packageFolder}/package.zip";
+
+            var zipBlob = _scormContainer.GetBlobClient(zipBlobName);
+
+            await using (var stream = file.OpenReadStream())
+            {
+                await zipBlob.UploadAsync(stream, new BlobHttpHeaders
+                {
+                    ContentType = "application/zip"
+                });
+            }
+
+            using var memory = new MemoryStream();
+            await using (var input = file.OpenReadStream())
+            {
+                await input.CopyToAsync(memory);
+            }
+
+            memory.Position = 0;
+
+            string? launchFile = null;
+
+            using (var archive = new ZipArchive(memory, ZipArchiveMode.Read))
+            {
+                foreach (var entry in archive.Entries)
+                {
+                    if (string.IsNullOrWhiteSpace(entry.Name))
+                        continue;
+
+                    var safeEntryName = entry.FullName.Replace("\\", "/");
+
+                    if (safeEntryName.Contains(".."))
+                        continue;
+
+                    var entryBlobName = $"{packageFolder}/content/{safeEntryName}";
+                    var entryBlob = _scormContainer.GetBlobClient(entryBlobName);
+
+                    await using var entryStream = entry.Open();
+
+                    await entryBlob.UploadAsync(entryStream, new BlobHttpHeaders
+                    {
+                        ContentType = GuessContentType(entry.Name)
+                    });
+
+                    var lower = safeEntryName.ToLowerInvariant();
+
+                    if (launchFile == null &&
+                        (lower.EndsWith("index.html") ||
+                         lower.EndsWith("index.htm") ||
+                         lower.EndsWith("story.html") ||
+                         lower.EndsWith("story_html5.html")))
+                    {
+                        launchFile = safeEntryName;
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(launchFile))
+                return BadRequest(new { message = "Could not find a launch file like index.html, story.html, or story_html5.html inside the SCORM ZIP." });
+
+            subject.IsOnlineTraining = true;
+            subject.VideoUrl = $"/api/TrainingTitle/scorm-launch/{subjectId}";
+            await _context.SaveChangesAsync();
+
+            var course = await _context.Courses.FirstOrDefaultAsync(c => c.SubjectSysId == subjectId);
+            if (course != null)
+            {
+                course.VirtualUrl = subject.VideoUrl;
+                course.DateModified = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
+
+            return Ok(new
+            {
+                message = "SCORM package uploaded successfully.",
+                launchUrl = subject.VideoUrl,
+                launchFile
+            });
+        }
+
+        [HttpGet("scorm-launch/{subjectId:int}")]
+        public async Task<IActionResult> LaunchScorm(int subjectId)
+        {
+            var subject = await _context.Subjects.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.SubjectSysId == subjectId);
+
+            if (subject == null)
+                return NotFound("Training title not found.");
+
+            var prefix = $"scorm/{subjectId}/";
+
+            await EnsureScormContainerAsync();
+
+            await foreach (var blobItem in _scormContainer.GetBlobsAsync(
+                BlobTraits.None,
+                BlobStates.None,
+                prefix,
+                default))
+            {
+                var name = blobItem.Name.Replace("\\", "/");
+                var lower = name.ToLowerInvariant();
+
+                if (!lower.Contains("/content/"))
+                    continue;
+
+                if (lower.EndsWith("index.html") ||
+                    lower.EndsWith("index.htm") ||
+                    lower.EndsWith("story.html") ||
+                    lower.EndsWith("story_html5.html"))
+                {
+                    var marker = "/content/";
+                    var relativePath = name.Substring(name.IndexOf(marker) + marker.Length);
+
+                    return Redirect($"/api/TrainingTitle/scorm-content/{subjectId}/{relativePath}");
+                }
+            }
+
+            return NotFound("SCORM launch file not found.");
+        }
+
+        [HttpGet("scorm-content/{subjectId:int}/{*path}")]
+        public async Task<IActionResult> GetScormContent(int subjectId, string path)
+        {
+            if (string.IsNullOrWhiteSpace(path) || path.Contains(".."))
+                return BadRequest("Invalid SCORM file path.");
+
+            var prefix = $"scorm/{subjectId}/";
+
+            string? matchedBlobName = null;
+            await EnsureScormContainerAsync();
+            await foreach (var blobItem in _scormContainer.GetBlobsAsync(
+    BlobTraits.None,
+    BlobStates.None,
+    prefix,
+    default))
+            {
+                if (blobItem.Name.EndsWith($"/content/{path}", StringComparison.OrdinalIgnoreCase))
+                {
+                    matchedBlobName = blobItem.Name;
+                    break;
+                }
+            }
+
+            if (matchedBlobName == null)
+                return NotFound("SCORM file not found.");
+
+            var blob = _scormContainer.GetBlobClient(matchedBlobName);
+
+            if (!await blob.ExistsAsync())
+                return NotFound("SCORM file missing.");
+
+            var fileName = Path.GetFileName(path);
+            var contentType = GuessContentType(fileName);
+
+            var dl = await blob.DownloadStreamingAsync();
+
+            return File(dl.Value.Content, contentType, enableRangeProcessing: true);
+        }
+
+
 
         [HttpGet("{subjectId:int}/image")]
         public async Task<IActionResult> GetTitleImage(int subjectId)
@@ -208,6 +402,7 @@ namespace HIVTraining_Vue.Server.Controllers
                             SubjectSysId = subject.SubjectSysId,
                             Hidden = false,
                             VirtualUrl = subject.VideoUrl,
+                            MaxSeats = 99999,
                             Format = onlineFormatCode,
                             DateEntered = DateTime.UtcNow,
                             DateModified = DateTime.UtcNow,
@@ -313,6 +508,8 @@ namespace HIVTraining_Vue.Server.Controllers
                 if (string.IsNullOrWhiteSpace(courseTitle))
                     return BadRequest(new { message = "Course title is required." });
 
+
+
                 existing.CourseTitle = courseTitle;
                 existing.Description = body.TryGetProperty("description", out var d) ? d.GetString() : null;
 
@@ -348,6 +545,7 @@ namespace HIVTraining_Vue.Server.Controllers
                 if (validCount != topicCodes.Count)
                     return BadRequest(new { message = "One or more selected topics are invalid." });
 
+
                 var strategy = _context.Database.CreateExecutionStrategy();
                 await strategy.ExecuteAsync(async () =>
                 {
@@ -375,7 +573,7 @@ namespace HIVTraining_Vue.Server.Controllers
                     await _context.SaveChangesAsync();
 
                     // ✅ 3) If changed from NOT online -> online, create/update Course
-                    if (!wasOnline && newIsOnline)
+                    if (newIsOnline)
                     {
                         var siteId = await _context.Sites
                             .Where(s => s.Active)
@@ -404,6 +602,7 @@ namespace HIVTraining_Vue.Server.Controllers
                                 Format = onlineFormatCode,
                                 DateEntered = DateTime.UtcNow,
                                 DateModified = DateTime.UtcNow,
+                                MaxSeats = 99999,
                                 MarkAsNewUntil = existing.MarkAsNewUntil
                             });
                         }
@@ -415,10 +614,12 @@ namespace HIVTraining_Vue.Server.Controllers
                             existingCourse.Format = onlineFormatCode;
                             existingCourse.DateModified = DateTime.UtcNow;
                             existingCourse.MarkAsNewUntil = existing.MarkAsNewUntil;
+                            existingCourse.MaxSeats = 99999;
                         }
 
                         await _context.SaveChangesAsync();
                     }
+
 
                     await tx.CommitAsync();
                 });

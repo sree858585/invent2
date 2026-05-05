@@ -411,7 +411,17 @@ namespace HIVTraining.Controllers
                         });
                     });
                 }).GeneratePdf();
-                var safeFileName = string.Concat(courseName.Split(Path.GetInvalidFileNameChars()));
+                var safeFileName = new string(courseName
+                    .Select(ch => char.IsLetterOrDigit(ch) ? ch : '_')
+                    .ToArray());
+
+                safeFileName = string.Join("_", safeFileName
+                    .Split('_', StringSplitOptions.RemoveEmptyEntries));
+
+                if (string.IsNullOrWhiteSpace(safeFileName))
+                {
+                    safeFileName = "Training_Course";
+                }
                 var isDownload = Request.Query.ContainsKey("download") &&
                  Request.Query["download"] == "true";
 
