@@ -34,47 +34,57 @@ namespace HIVTraining.Controllers
 
         [HttpGet("FormatPaged/{format}")]
         public async Task<IActionResult> GetCoursesByFormatPaged(
-    int format,                                    // legacy: 0 = All, >0 = single format
+    int format,
     [FromQuery] int page = 1,
     [FromQuery] int pageSize = 9,
     [FromQuery] string? search = null,
     [FromQuery] int? region = null,
-    [FromQuery] int? category = null,
-    [FromQuery] int? site = null,
+[FromQuery] int? topic = null,
+[FromQuery] int? site = null,
     [FromQuery] DateTime? fromDate = null,
     [FromQuery] DateTime? toDate = null,
-    [FromQuery] string? formats = null            // NEW: multi-select "1,2,4"
+    [FromQuery] string? formats = null
 )
         {
-            var baseQuery = _context.Courses
-                .Where(c => !c.Hidden);
+            var today = DateTime.Today;
 
-            // ===== FORMAT FILTERS =====
-            // Parse multi-select first
+            var baseQuery = _context.Courses
+                .Include(c => c.Subject)
+                .Where(c => !c.Hidden)
+                .Where(c =>
+                    c.Format == 2 ||
+                    (
+                        c.Format != 2 &&
+                        (c.EndDate ?? c.CourseDate).HasValue &&
+                        (c.EndDate ?? c.CourseDate)!.Value.Date >= today
+                    )
+                );
+
             List<int> selectedFormats = new();
+
             if (!string.IsNullOrWhiteSpace(formats))
             {
                 selectedFormats = formats
                     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                    .Select(s => int.TryParse(s, out var v) ? (int?)v : null)
-                    .Where(v => v.HasValue)
-                    .Select(v => v!.Value)
+                    .Select(x => int.TryParse(x, out var val) ? (int?)val : null)
+                    .Where(x => x.HasValue)
+                    .Select(x => x!.Value)
                     .Distinct()
                     .ToList();
             }
 
             if (selectedFormats.Count > 0)
             {
-                // multi-select overrides legacy param
-                baseQuery = baseQuery.Where(c => c.Format.HasValue && selectedFormats.Contains(c.Format.Value));
+                baseQuery = baseQuery.Where(c =>
+                    c.Format.HasValue &&
+                    selectedFormats.Contains(c.Format.Value)
+                );
             }
             else if (format != 0)
             {
-                // legacy single-format
                 baseQuery = baseQuery.Where(c => c.Format == format);
             }
 
-            // ===== SEARCH =====
             if (!string.IsNullOrWhiteSpace(search))
             {
                 baseQuery = baseQuery.Where(c =>
@@ -85,35 +95,57 @@ namespace HIVTraining.Controllers
                 );
             }
 
-            // ===== ADVANCED FILTERS =====
             if (region.HasValue)
                 baseQuery = baseQuery.Where(c => c.Region == region);
 
-            if (category.HasValue)
-                baseQuery = baseQuery.Where(c => c.ContractType == category);
+            if (topic.HasValue)
+            {
+                baseQuery = baseQuery.Where(c =>
+                    c.Subject != null &&
+                    _context.SubjectTopics.Any(st =>
+                        st.SubjectSysId == c.Subject.SubjectSysId &&
+                        st.TopicCode == topic.Value
+                    )
+                );
+            }
 
             if (site.HasValue)
                 baseQuery = baseQuery.Where(c => c.SiteSysId == site);
 
             if (fromDate.HasValue)
-                baseQuery = baseQuery.Where(c => c.CourseDate >= fromDate.Value);
+            {
+                baseQuery = baseQuery.Where(c =>
+                    c.Format == 2 ||
+                    (
+                        (c.EndDate ?? c.CourseDate).HasValue &&
+                        (c.EndDate ?? c.CourseDate)!.Value.Date >= fromDate.Value.Date
+                    )
+                );
+            }
 
             if (toDate.HasValue)
-                baseQuery = baseQuery.Where(c => c.CourseDate <= toDate.Value);
+            {
+                baseQuery = baseQuery.Where(c =>
+                    c.Format == 2 ||
+                    (
+                        (c.EndDate ?? c.CourseDate).HasValue &&
+                        (c.EndDate ?? c.CourseDate)!.Value.Date <= toDate.Value.Date
+                    )
+                );
+            }
 
-            // ===== INCLUDE & PAGE =====
-            var query = baseQuery.Include(c => c.Subject);
+            var total = await baseQuery.CountAsync();
 
-            var total = await query.CountAsync();
-
-            var data = await query
-                .OrderBy(c => c.CourseDate)
+            var data = await baseQuery
+                .OrderBy(c => c.Format == 2 ? 0 : 1)
+                .ThenBy(c => c.EndDate ?? c.CourseDate)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .Select(c => new
                 {
                     c.CourseSysId,
                     c.CourseDate,
+                    c.EndDate,
                     c.CourseTime,
                     c.Information,
                     c.City,
@@ -125,17 +157,19 @@ namespace HIVTraining.Controllers
                     c.Instructor1,
                     c.Instructor2,
                     IsMultiSession = c.IsMultiSession,
+
                     SiteName = _context.Sites
                         .Where(s => s.SiteSysId == c.SiteSysId)
                         .Select(s => s.SiteName)
                         .FirstOrDefault(),
-                    SubjectSysId = c.Subject != null ? c.Subject.SubjectSysId : 0,
 
+                    SubjectSysId = c.Subject != null ? c.Subject.SubjectSysId : 0,
                     SubjectTitle = c.Subject != null ? c.Subject.CourseTitle : null,
                     SubjectDescription = c.Subject != null ? c.Subject.Description : null,
+
                     TitleImageUrl = c.Subject != null && !string.IsNullOrEmpty(c.Subject.TitleImagePath)
-    ? $"/api/TrainingTitle/{c.Subject.SubjectSysId}/image"
-    : null,
+                        ? $"/api/TrainingTitle/{c.Subject.SubjectSysId}/image"
+                        : null,
 
                     TitleImagePath = c.Subject != null ? c.Subject.TitleImagePath : null,
 
@@ -1058,8 +1092,9 @@ namespace HIVTraining.Controllers
             var total = await query.CountAsync();
 
             var data = await query
-                .OrderBy(c => c.CourseDate)
-                .Skip((page - 1) * pageSize)
+.OrderBy(c => c.Format == 2 ? 0 : 1)
+.ThenBy(c => c.CourseDate)
+.Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .Select(c => new
                 {
