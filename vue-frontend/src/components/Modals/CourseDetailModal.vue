@@ -2,7 +2,7 @@
     <div class="modal-overlay" @click.self="$emit('close')">
         <div class="modal-content">
             <!-- Title Banner -->
-            <div class="modal-banner" :style="bannerStyle">
+            <div class="modal-banner">
                 <h2 class="course-title">{{ course.subjectTitle }}</h2>
                 <div class="banner-actions">
                     <template v-if="alreadyRegistered">
@@ -151,7 +151,7 @@
     </div>
 </template>
 
-<script>import imagew from '@/assets/img.png';
+<script>
 import apiClient from "@/axios";
 
 export default {
@@ -177,14 +177,7 @@ export default {
             return (this.course?.courseTime?.length || 0) > 80;
         },
        
-        bannerStyle() {
-            return {
-                backgroundImage: `url(${imagew})`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat'
-            };
-        }
+        
     },
         async mounted() {
             document.addEventListener("keydown", this.handleKeydown);
@@ -321,57 +314,98 @@ export default {
     .modal-overlay {
         position: fixed;
         inset: 0;
-        background: rgba(0,0,0,.6);
+        background: radial-gradient(circle at top, rgba(15,23,42,0.3), rgba(15,23,42,0.75));
+        backdrop-filter: blur(6px);
         display: flex;
         justify-content: center;
         align-items: center;
+        padding: 24px;
         z-index: 1000;
     }
 
     .modal-content {
-        background: #fff;
+        background: #ffffff;
         width: 75vw;
         max-height: 90vh;
         overflow-y: auto;
-        border-radius: 12px;
-        box-shadow: 0 8px 20px rgba(0,0,0,.15);
+        border-radius: 24px;
+        box-shadow: 0 24px 60px rgba(15,23,42,0.25), 0 0 0 1px rgba(148,163,184,0.35);
         font-family: 'Segoe UI', sans-serif;
         font-size: 16.5px;
     }
 
-    /* ===== Banner ===== */
     .modal-banner {
-        background-color: #f1f3f6;
-        padding: 20px 24px;
-        border-top-left-radius: 12px;
-        border-top-right-radius: 12px;
-        border-bottom: 1px solid #ddd;
+        background: #43285D;
+        color: white;
+        padding: 28px 40px;
+        border-top-left-radius: 24px;
+        border-top-right-radius: 24px;
         display: flex;
+        justify-content: space-between;
         align-items: center;
-        gap: 12px;
-        min-height: 120px;
+        gap: 24px;
+        min-height: 130px;
     }
 
     .course-title {
-        font-size: 22px;
-        font-weight: 600;
-        color: #ebeff2;
+        font-size: 34px;
+        font-weight: 800;
+        color: #ffffff;
         margin: 0;
-        flex: 1 1 auto;
+        line-height: 1.25;
+        flex: 1;
     }
 
     .banner-actions {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 28px;
         margin-left: auto;
     }
 
     .btn-register-top {
-        padding: 8px 14px;
-        font-size: 15px;
-        border-radius: 6px;
+        background: transparent !important;
+        color: #ffffff !important;
+        border: 2px solid rgba(255,255,255,0.85) !important;
+        font-weight: 800;
+        font-size: 18px;
+        padding: 14px 30px;
+        border-radius: 999px;
+        min-width: 160px;
+        height: 56px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: none !important;
     }
+
+        .btn-register-top::before {
+            content: "👤+";
+            margin-right: 10px;
+            font-size: 20px;
+        }
+
+        .btn-register-top:hover {
+            background: rgba(255,255,255,0.14) !important;
+            transform: translateY(-2px);
+        }
+
+    .close-btn {
+        color: #fff;
+        background: transparent;
+        border: 2px solid rgba(255,255,255,0.55);
+        border-radius: 9999px;
+        width: 58px;
+        height: 58px;
+        font-size: 36px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+    }
+
+    
 
     .registered-pill {
         background: rgba(56,142,60,.1);
@@ -583,13 +617,24 @@ export default {
     }
 
     .btn-primary {
-        background: #388e3c;
-        color: #fff;
+        background: #43285D;
+        color: white;
         border: none;
+        border-radius: 14px;
+        padding: 14px 30px;
+        font-size: 18px;
+        font-weight: 800;
+        box-shadow: 0 10px 24px rgba(67, 40, 93, 0.35);
     }
 
+        .btn-primary::before {
+            content: "👤+";
+            margin-right: 10px;
+        }
+
         .btn-primary:hover {
-            background: #2e7d32;
+            background: #361F4A;
+            transform: translateY(-2px);
         }
 
     .btn-secondary {

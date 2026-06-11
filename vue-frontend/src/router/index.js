@@ -22,6 +22,7 @@ import ManagePeer from "@/components/ManagePeer.vue";
 import ManageEduCredits from "@/components/ManageEduCredits.vue";
 import ManagePeerDetail from "@/components/ManagePeerDetail.vue";
 import MyCertificates from "@/components/MyCertificates.vue";
+import Reports from "@/components/Reports.vue";
 
 import CustomCalendarEventsAdmin from "@/components/CustomCalendarEventsAdmin.vue";
 
@@ -184,6 +185,12 @@ const routes = [
         path: "/peer-certification/continuing-education",
         name: "PeerContinuingEducation",
         component: () => import("@/components/PeerContinuingEducation.vue")
+    },
+    {
+        path: "/reports",
+        name: "Reports",
+        component: Reports,
+        beforeEnter: requireAdminOrManager,
     },
     {
         path: "/",

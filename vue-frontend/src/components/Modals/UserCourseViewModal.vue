@@ -2,7 +2,7 @@
     <div class="modal-overlay" @click.self="$emit('close')">
         <div class="modal-content">
             <!-- Title Banner -->
-            <div class="modal-banner" :style="bannerStyle">
+            <div class="modal-banner" >
                 <h2 class="course-title">{{ course.subjectTitle }}</h2>
                 <button class="close-btn" @click="$emit('close')">&times;</button>
             </div>
@@ -90,7 +90,7 @@
     </div>
 </template>
 
-<script>import imagew from '@/assets/img.png';
+<script>
 
     export default {
         props: ["course"],
@@ -104,14 +104,7 @@
             hasPresenters() {
                 return this.course.instructorLabel || this.course.instructor2Label;
             },
-            bannerStyle() {
-                return {
-                    backgroundImage: `url(${imagew})`,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                    backgroundRepeat: 'no-repeat'
-                };
-            },
+            
         },
         methods: {
             toggleNote(instructor) {
@@ -154,34 +147,40 @@
     }
 
     .modal-banner {
-        background-color: #f1f3f6;
-        padding: 20px 24px;
+        background: #43285D;
+        color: white;
+        padding: 28px 40px;
         border-top-left-radius: 12px;
         border-top-right-radius: 12px;
-        border-bottom: 1px solid #ddd;
         display: flex;
-        flex-wrap: wrap;
         justify-content: space-between;
         align-items: center;
-        min-height: 120px;
+        min-height: 110px;
     }
 
     .course-title {
-        font-size: 22px;
-        font-weight: 600;
-        color: #ebeff2;
+        font-size: 26px;
+        font-weight: 700;
+        color: #ffffff;
         margin: 0;
         word-break: break-word;
         max-width: 85%;
         white-space: normal;
+        line-height: 1.35;
     }
 
     .close-btn {
-        font-size: 24px;
-        border: none;
-        background: none;
+        color: #ffffff;
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        border-radius: 999px;
+        width: 40px;
+        height: 40px;
+        font-size: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         cursor: pointer;
-        color: #888;
     }
 
     .modal-body {

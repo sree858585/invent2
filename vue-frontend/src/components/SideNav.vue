@@ -112,6 +112,7 @@
                             <li><router-link to="/system/course-list">Course List</router-link></li>
                             <li><router-link to="/system/custom-calendar-events">Custom Calendar Events</router-link></li>
                             <li><router-link to="/system/home-banners">Home Page Banners</router-link></li>
+
                         </ul>
                     </li>
 
@@ -139,21 +140,27 @@
 
                     <!-- ✅ ATTENDANCE MANAGEMENT: Only for Admin/Manager -->
                     <!--<li v-if="isUserLoggedIn && isAdminOrManager">
-                <div class="dropdown-header" @click="toggleSection('attendance')">
-                    <span class="icon">📝</span>
-                    <span v-show="isExpanded">Attendance Management</span>
-                    <span class="dropdown-arrow" :class="{ rotated: sections.attendance }">▼</span>
-                </div>
-                <ul v-if="sections.attendance && isExpanded" class="dropdown-menu">
-                    <li><router-link to="/attendance/mark">Mark Attendance</router-link></li>
-                    <li><router-link to="/attendance/view">View Attendance</router-link></li>
-                </ul>
-            </li>-->
+        <div class="dropdown-header" @click="toggleSection('attendance')">
+            <span class="icon">📝</span>
+            <span v-show="isExpanded">Attendance Management</span>
+            <span class="dropdown-arrow" :class="{ rotated: sections.attendance }">▼</span>
+        </div>
+        <ul v-if="sections.attendance && isExpanded" class="dropdown-menu">
+            <li><router-link to="/attendance/mark">Mark Attendance</router-link></li>
+            <li><router-link to="/attendance/view">View Attendance</router-link></li>
+        </ul>
+    </li>-->
                     <!-- ✅ ROLE MANAGEMENT (Unified page for Admin + Manager) -->
                     <li v-if="isUserLoggedIn && isAdminOrManager">
                         <router-link to="/role-management" class="nav-item-link">
                             <span class="icon">🛡️</span>
                             <span v-show="isExpanded">User Management</span>
+                        </router-link>
+                    </li>
+                    <li v-if="isUserLoggedIn && isAdminOrManager">
+                        <router-link to="/reports" class="nav-item-link">
+                            <span class="icon">📊</span>
+                            <span v-show="isExpanded">Reports</span>
                         </router-link>
                     </li>
 
@@ -340,23 +347,23 @@
     .sidenav-container {
         height: 100vh;
         background: #f4f6f9;
-        overflow: hidden; /* Prevent outer scroll bar */
+        overflow: visible;
         display: flex;
-        border-radius: 0 10px 10px 0; /* Only top-left rounded */
+        border-radius: 0 10px 10px 0;
     }
 
    
 
     /* ===== Hamburger Toggle ===== */
     .hamburger-button {
-        position: fixed; /* fixed to the viewport */
-        top: 16px;
-        left: 16px;
+        position: absolute;
+        top: 12px;
+        left: 14px;
         z-index: 1100;
         width: 42px;
         height: 42px;
         background-color: #ffffff;
-        color: #6e528d;
+        color: #43285D;
         font-size: 22px;
         border-radius: 50%;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
@@ -369,20 +376,25 @@
     /* ===== Sidebar Core ===== */
     nav {
         width: 260px;
-        background: #6e528d;
+        background: #43285D;
         color: #ffffff;
-        overflow-y: auto;
-        transition: width 0.3s ease, margin-left 0.3s ease;
+        overflow: visible;
+        transition: width 0.3s ease;
         box-shadow: 2px 0 10px rgba(0, 0, 0, 0.15);
         display: flex;
         flex-direction: column;
         position: relative;
-        border-radius: 10px;
+        border-radius: 0 10px 10px 0;
     }
 
         nav.collapsed {
             width: 70px;
         }
+    .sidenav-scrollable {
+        flex: 1;
+        overflow-y: auto;
+        padding-top: 60px;
+    }
 
     /* ===== Profile Section ===== */
     .profile-section {
@@ -517,10 +529,7 @@
             height: 100%;
         }
     }
-    .sidenav-scrollable {
-        flex: 1;
-        overflow-y: auto;
-    }
+    
 
     /* add inside <style scoped> in SideNav.vue    new css  */
 

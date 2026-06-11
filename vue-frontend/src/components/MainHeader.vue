@@ -1,6 +1,6 @@
 ﻿<template>
     <header>
-        <nav class="navbar navbar-custom" :style="bannerStyle">
+        <nav class="navbar navbar-custom" >
             <div class="container navbar-container">
                 <div class="navbar-brand">Department of Health</div>
 
@@ -31,7 +31,8 @@
     </header>
 </template>
 
-<script>import image from '@/assets/img.png';
+<script>
+    //import image from '@/assets/img.png';
     import defaultAvatar from '@/assets/profile.png';
 
     export default {
@@ -59,16 +60,7 @@
                 },
             },
         },
-        computed: {
-            bannerStyle() {
-                return {
-                    backgroundImage: `url(${image})`,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                    backgroundRepeat: 'no-repeat',
-                };
-            },
-        },
+        
         mounted() {
             document.addEventListener("click", this.handleClickOutside);
         },
@@ -107,9 +99,13 @@
 
 <style scoped>
     .navbar-custom {
-        background-color: #6e528d;
+        background: #43285D;
         color: white;
         padding: 15px 25px;
+        min-height: 74px;
+        display: flex;
+        align-items: center;
+        box-shadow: 0 4px 12px rgba(67, 40, 93, 0.18);
     }
 
     .navbar-container {
@@ -192,7 +188,7 @@
 
             .dropdown-menu li:hover {
                 background-color: #f2f2f2;
-                color: #6e528d;
+                color: #43285D;
             }
 
     .fade-enter-active,

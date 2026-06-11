@@ -1,5 +1,6 @@
 ﻿<template>
     <div class="course-container">
+
         <!-- STICKY HEADER (top) -->
         <section class="courses-header">
             <div class="header-inner">
@@ -19,11 +20,11 @@
                     </div>
 
                     <div class="filter-field">
-                        <label>Category</label>
-                        <select v-model="selectedCategory">
+                        <label>Topic</label>
+                        <select v-model="selectedTopic">
                             <option value="">All</option>
-                            <option v-for="category in categoryOptions" :key="category.code" :value="category.code">
-                                {{ category.value }}
+                            <option v-for="topic in topicOptions" :key="topic.code" :value="topic.code">
+                                {{ topic.value }}
                             </option>
                         </select>
                     </div>
@@ -54,6 +55,7 @@
                 </div>
             </div>
         </section>
+        
 
         <!-- SCROLLABLE CONTENT -->
         <section class="courses-scroll">
@@ -66,9 +68,17 @@
                          class="card"
                          @click="openCourseModal(course)">
                         <div class="card-image" :style="courseImageStyle(course)">
+
+                            <!-- FORMAT BADGE -->
+                            <div class="format-tag">
+                                {{ course.formatLabel || formatName(course.format) }}
+                            </div>
+
+                            <!-- CREDIT BADGE -->
                             <div v-if="course.cnecredits || course.oasascredits" class="credit-tag">
                                 {{ [course.cnecredits ? 'CNE' : '', course.oasascredits ? 'OASAS' : ''].filter(Boolean).join(' | ') }}
                             </div>
+
                         </div>
 
                         <div class="card-content">
@@ -77,13 +87,25 @@
                             </h5>
 
                             <div class="card-datetime-block">
-                                <p class="card-date"><strong>Date:</strong> {{ formatDate(course.courseDate) }}</p>
+                                <p v-if="!isOnlineCourse(course)" class="card-date">
+                                    <strong>End Date:</strong> {{ formatDate(course.endDate || course.courseDate) }}
+                                </p>
+
+                                <p v-else class="card-date online-note">
+                                    Self-paced online training
+                                </p>
                                 <div class="card-time-seats">
-                                    <p class="card-time" :title="course.courseTime">
+                                    <p v-if="!isOnlineCourse(course)" class="card-time" :title="course.courseTime">
                                         <strong>Time:</strong>
                                         {{ truncateText(course.courseTime || 'N/A', 40) }}
                                     </p>
-                                    <span class="card-seats">Seats: {{ course.maxSeats }}</span>
+
+                                    <p v-else class="card-time">
+                                        <strong>Available:</strong> Anytime
+                                    </p>
+                                    <span v-if="course.maxSeats" class="card-seats">
+                                        Seats: {{ course.maxSeats }}
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -160,14 +182,14 @@ export default {
 
       searchQuery: "",
       selectedRegion: "",
-      selectedCategory: "",
-      selectedSite: "",
+selectedTopic: "",
+    selectedSite: "",
       fromDate: "",
       toDate: "",
 
       regionOptions: [],
-      categoryOptions: [],
-      siteOptions: [],
+topicOptions: [],
+    siteOptions: [],
 
       user: null,
       showSuccessModal: false,
@@ -221,10 +243,10 @@ export default {
       this.currentPage = 1;
       this.getCourses();
     },
-    selectedCategory() {
-      this.currentPage = 1;
-      this.getCourses();
-    },
+    selectedTopic() {
+  this.currentPage = 1;
+  this.getCourses();
+},
     selectedSite() {
       this.currentPage = 1;
       this.getCourses();
@@ -272,6 +294,9 @@ export default {
               backgroundRepeat: "no-repeat",
           };
       },
+      isOnlineCourse(course) {
+  return Number(course.format) === 2 || course.isOnlineTraining === true || course.formatLabel?.toLowerCase().includes("online");
+},
     handleRegisterSuccess() {
       this.showRegisterModal = false;
       this.fetchUser();
@@ -326,8 +351,8 @@ export default {
 
     resetFilters() {
       this.selectedRegion = "";
-      this.selectedCategory = "";
-      this.selectedSite = "";
+this.selectedTopic = "";
+    this.selectedSite = "";
       this.fromDate = "";
       this.toDate = "";
       this.searchQuery = "";
@@ -335,19 +360,20 @@ export default {
     },
 
     async loadLookups() {
-      try {
-        const [regions, categories, sites] = await Promise.all([
-          apiClient.get("/Lookup/regions"),
-          apiClient.get("/Lookup/categories"),
-          apiClient.get("/Lookup/sites"),
-        ]);
-        this.regionOptions = regions.data?.$values ?? regions.data ?? [];
-        this.categoryOptions = categories.data?.$values ?? categories.data ?? [];
-        this.siteOptions = sites.data?.$values ?? sites.data ?? [];
-      } catch (error) {
-        console.error("Error loading lookup data:", error);
-      }
-    },
+  try {
+    const [regions, topics, sites] = await Promise.all([
+      apiClient.get("/Lookup/regions"),
+      apiClient.get("/Lookup/topics"),
+      apiClient.get("/Lookup/sites"),
+    ]);
+
+    this.regionOptions = regions.data?.$values ?? regions.data ?? [];
+    this.topicOptions = topics.data?.$values ?? topics.data ?? [];
+    this.siteOptions = sites.data?.$values ?? sites.data ?? [];
+  } catch (error) {
+    console.error("Error loading lookup data:", error);
+  }
+},
 
     async getCourses() {
       this.loading = true;
@@ -367,8 +393,8 @@ export default {
             pageSize: this.pageSize,
             search: this.searchQuery || undefined,
             region: this.selectedRegion || undefined,
-            category: this.selectedCategory || undefined,
-            site: this.selectedSite || undefined,
+topic: this.selectedTopic || undefined,
+    site: this.selectedSite || undefined,
             fromDate: this.fromDate || undefined,
             toDate: this.toDate || undefined,
             // NEW: multi-select formats
@@ -376,8 +402,8 @@ export default {
           },
         });
 
-        this.courses = res.data?.data?.$values ?? [];
-        this.totalItems = res.data?.total ?? 0;
+        this.courses = res.data?.data?.$values ?? res.data?.data ?? [];
+this.totalItems = res.data?.total ?? 0;
 
         // ── Optional temporary client-side filter if backend isn't ready ──
         // if (hasSpecific) {
@@ -431,13 +457,38 @@ export default {
 <style scoped>
     /* === Layout variables === */
     .course-container {
-        --header-offset: 0px; /* set to your fixed navbar height if you have one */
-        display: grid;
-        grid-template-rows: auto 1fr;
         min-height: 100vh;
-        background: #f4f6f8;
+        background: radial-gradient(circle at top left, rgba(67, 40, 93, 0.08), transparent 35%), linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+    }
+
+    .course-hero {
+        padding: 28px 24px 18px;
+    }
+
+    .hero-chip {
+        display: inline-block;
+        padding: 7px 14px;
+        border-radius: 999px;
+        background: #eee7f7;
+        color: #43285d;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+    }
+
+    .course-hero h1 {
+        margin: 12px 0 8px;
+        font-size: 34px;
+        color: #172033;
+        font-weight: 850;
+    }
+
+    .course-hero p {
         margin: 0;
-        padding: 0;
+        max-width: 760px;
+        color: #667085;
+        font-size: 15px;
+        line-height: 1.6;
     }
 
     /* === Sticky header at the top === */
@@ -722,4 +773,17 @@ export default {
             cursor: default;
             color: #999;
         }
+    .format-tag {
+        position: absolute;
+        left: 12px;
+        top: 12px;
+        background: rgba(17, 24, 39, 0.82);
+        color: white;
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 800;
+        backdrop-filter: blur(8px);
+        z-index: 11;
+    }
 </style>
