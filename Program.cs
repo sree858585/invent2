@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using HIVTraining_Vue.Data;
 using HIVTraining_Vue.Server.Models;
 using QuestPDF.Infrastructure;
+using HIVTraining_Vue.Server.Services;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -52,6 +53,11 @@ builder.Services.Configure<IdentityOptions>(options =>
     options.Password.RequireNonAlphanumeric = false;
     options.SignIn.RequireConfirmedEmail = false;
 });
+
+builder.Services.Configure<SmtpSettings>(
+    builder.Configuration.GetSection("SmtpSettings"));
+
+builder.Services.AddScoped<IEmailService, EmailService>();
 
 // ✅ REMOVE HTTPS configuration completely
 
