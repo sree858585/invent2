@@ -234,11 +234,13 @@
             },
 
             isAllSelected() {
+                const list = Array.isArray(this.filteredCourses)
+                    ? this.filteredCourses
+                    : [];
+
                 return (
-                    this.filteredCourses.length > 0 &&
-                    this.filteredCourses.every(c =>
-                        this.selectedCourseIds.includes(c.courseSysId)
-                    )
+                    list.length > 0 &&
+                    list.every(c => this.selectedCourseIds.includes(c.courseSysId))
                 );
             },
         },
@@ -248,14 +250,29 @@
         },
 
         methods: {
+
+
             async loadCourses() {
                 this.loading = true;
 
                 try {
-                    const res = await apiClient.get("/Reports/courses");
-                    this.courses = res.data?.$values ?? res.data ?? [];
+                    const res = await apiClient.get("/Reports/courses", {
+                        headers: {
+                            Accept: "application/json"
+                        },
+                        params: {
+                            _: Date.now()
+                        }
+                    });
+
+                    console.log("Courses response:", res.data);
+
+                    const data = res.data?.$values ?? res.data;
+
+                    this.courses = Array.isArray(data) ? data : [];
                 } catch (err) {
                     console.error("Failed to load report courses:", err);
+                    this.courses = [];
                 } finally {
                     this.loading = false;
                 }
