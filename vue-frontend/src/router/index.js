@@ -23,6 +23,7 @@ import ManageEduCredits from "@/components/ManageEduCredits.vue";
 import ManagePeerDetail from "@/components/ManagePeerDetail.vue";
 import MyCertificates from "@/components/MyCertificates.vue";
 import Reports from "@/components/Reports.vue";
+import ResetPassword from "@/components/ResetPassword.vue";
 
 import CustomCalendarEventsAdmin from "@/components/CustomCalendarEventsAdmin.vue";
 
@@ -191,6 +192,15 @@ const routes = [
         name: "Reports",
         component: Reports,
         beforeEnter: requireAdminOrManager,
+    },
+    {
+
+        path: "/reset-password",
+
+        name: "ResetPassword",
+
+        component: ResetPassword
+
     },
     {
         path: "/",
