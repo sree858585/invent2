@@ -14,6 +14,8 @@ using System;
 using System.IO;
 using Microsoft.AspNetCore.Hosting;
 using System.Globalization;
+using HIVTraining_Vue.Server.Services;
+using System.Net;
 
 namespace HIVTraining.Controllers
 {
@@ -23,13 +25,32 @@ namespace HIVTraining.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly IWebHostEnvironment _env;
+        private readonly IEmailService _emailService;
 
+        private static string FormatTime(TimeSpan? time)
+        {
+            if (!time.HasValue) return "N/A";
+            return DateTime.Today.Add(time.Value).ToString("hh:mm tt");
+        }
 
-        public CourseController(ApplicationDbContext context, IWebHostEnvironment env)
+        private static string FormatTime(string? time)
+        {
+            if (string.IsNullOrWhiteSpace(time)) return "N/A";
+
+            if (TimeSpan.TryParse(time, out var parsedTime))
+                return DateTime.Today.Add(parsedTime).ToString("hh:mm tt");
+
+            return time;
+        }
+
+        public CourseController(
+    ApplicationDbContext context,
+    IWebHostEnvironment env,
+    IEmailService emailService)
         {
             _context = context;
             _env = env;
-
+            _emailService = emailService;
         }
 
         [HttpGet("FormatPaged/{format}")]
@@ -225,6 +246,246 @@ namespace HIVTraining.Controllers
                 .ToListAsync();
 
             return Ok(new { total, data });
+        }
+        private async Task SendCourseRegistrationEmailAsync(
+    User user,
+    Course course,
+    bool isWaitlisted,
+    int? waitlistNumber)
+        {
+            var courseDetails = await _context.Courses
+                .Include(c => c.Subject)
+                .Where(c => c.CourseSysId == course.CourseSysId)
+                .Select(c => new
+                {
+                    CourseTitle = c.Subject != null ? c.Subject.CourseTitle : "Training Course",
+                    c.CourseDate,
+                    c.EndDate,
+                    c.CourseTime,
+                    c.TrainingLocation,
+                    c.City,
+                    c.VirtualUrl,
+                    c.Format,
+                    c.Information,
+
+                    FormatLabel = _context.LkFormats
+                        .Where(f => f.Code == c.Format)
+                        .Select(f => f.Value)
+                        .FirstOrDefault(),
+
+                    SiteName = _context.Sites
+                        .Where(s => s.SiteSysId == c.SiteSysId)
+                        .Select(s => s.SiteName)
+                        .FirstOrDefault(),
+
+                    Instructor1 = _context.Instructors
+                        .Where(i => i.InstructorSysId == c.Instructor1)
+                        .Select(i => i.Name)
+                        .FirstOrDefault(),
+
+                    Instructor2 = _context.Instructors
+                        .Where(i => i.InstructorSysId == c.Instructor2)
+                        .Select(i => i.Name)
+                        .FirstOrDefault(),
+
+                    Sessions = _context.CourseSessions
+                        .Where(s => s.CourseSysId == c.CourseSysId)
+                        .OrderBy(s => s.SessionDate)
+                        .Select(s => new
+                        {
+                            s.SessionDate,
+                            s.StartTime,
+                            s.EndTime,
+                            s.SessionUrl,
+                            s.TrainingLocation
+                        })
+                        .ToList()
+                })
+                .FirstOrDefaultAsync();
+
+            if (courseDetails == null || string.IsNullOrWhiteSpace(user.Email))
+                return;
+
+            var isOnlineTraining =
+                courseDetails.Format == 2 ||
+                string.Equals(courseDetails.FormatLabel, "Online", StringComparison.OrdinalIgnoreCase);
+
+            var participantName = $"{user.FirstName} {user.LastName}".Trim();
+            if (string.IsNullOrWhiteSpace(participantName))
+                participantName = "Participant";
+
+            var statusText = isWaitlisted
+                ? $"You have been added to the waitlist. Your waitlist number is {waitlistNumber}."
+                : "Your course registration is confirmed.";
+
+            var statusColor = isWaitlisted ? "#92400e" : "#166534";
+            var statusBg = isWaitlisted ? "#fffbeb" : "#ecfdf3";
+
+            string dateText = courseDetails.CourseDate?.ToString("MM/dd/yyyy") ?? "N/A";
+
+            if (courseDetails.EndDate.HasValue &&
+                courseDetails.CourseDate.HasValue &&
+                courseDetails.EndDate.Value.Date != courseDetails.CourseDate.Value.Date)
+            {
+                dateText = $"{courseDetails.CourseDate:MM/dd/yyyy} - {courseDetails.EndDate:MM/dd/yyyy}";
+            }
+
+            var instructorText = string.Join(", ",
+                new[] { courseDetails.Instructor1, courseDetails.Instructor2 }
+                .Where(x => !string.IsNullOrWhiteSpace(x)));
+
+            if (string.IsNullOrWhiteSpace(instructorText))
+                instructorText = "N/A";
+
+            var locationHtml = "";
+
+            if (isOnlineTraining)
+            {
+                locationHtml = $@"
+<tr>
+<td style='padding:8px 0; font-weight:600;'>Training Type:</td>
+<td style='padding:8px 0;'>{WebUtility.HtmlEncode(courseDetails.FormatLabel ?? "Online")}</td>
+</tr>";
+
+                if (!string.IsNullOrWhiteSpace(courseDetails.VirtualUrl))
+                {
+                    locationHtml += $@"
+<tr>
+<td style='padding:8px 0; font-weight:600;'>Training Link:</td>
+<td style='padding:8px 0;'>
+<a href='{courseDetails.VirtualUrl}' style='color:#43285D;'>Open Online Training</a>
+</td>
+</tr>";
+                }
+            }
+            else
+            {
+                locationHtml = $@"
+<tr>
+<td style='padding:8px 0; font-weight:600;'>Site:</td>
+<td style='padding:8px 0;'>{WebUtility.HtmlEncode(courseDetails.SiteName ?? "N/A")}</td>
+</tr>
+<tr>
+<td style='padding:8px 0; font-weight:600;'>Location:</td>
+<td style='padding:8px 0;'>{WebUtility.HtmlEncode(courseDetails.TrainingLocation ?? courseDetails.City ?? "N/A")}</td>
+</tr>";
+            }
+
+            var sessionsHtml = "";
+
+            if (courseDetails.Sessions.Any())
+            {
+                sessionsHtml = "<h3 style='color:#43285D; margin-top:24px;'>Session Details</h3>";
+
+                foreach (var session in courseDetails.Sessions)
+                {
+                    sessionsHtml += $@"
+<div style='padding:12px; border:1px solid #e5e7eb; border-radius:10px; margin-bottom:10px; background:#fafafa;'>
+<strong>Date:</strong> {session.SessionDate:MM/dd/yyyy}<br/>
+<strong>Time:</strong> {WebUtility.HtmlEncode(FormatTime(session.StartTime))} - {WebUtility.HtmlEncode(FormatTime(session.EndTime))}<br/>";
+
+                    if (!isOnlineTraining && !string.IsNullOrWhiteSpace(session.TrainingLocation))
+                    {
+                        sessionsHtml += $"<strong>Location:</strong> {WebUtility.HtmlEncode(session.TrainingLocation)}<br/>";
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(session.SessionUrl))
+                    {
+                        sessionsHtml += $"<strong>Session Link:</strong> <a href='{session.SessionUrl}' style='color:#43285D;'>Open Link</a><br/>";
+                    }
+
+                    sessionsHtml += "</div>";
+                }
+            }
+
+            var subject = isWaitlisted
+                ? "Course Waitlist Confirmation - HIV Training Portal"
+                : "Course Registration Confirmation - HIV Training Portal";
+
+            var body = $@"
+<!DOCTYPE html>
+<html>
+<body style='margin:0; padding:0; background:#f4f4f7; font-family:Segoe UI, Arial, sans-serif;'>
+
+<table width='100%' cellpadding='0' cellspacing='0' style='background:#f4f4f7; padding:30px 0;'>
+<tr>
+<td align='center'>
+
+<table width='640' cellpadding='0' cellspacing='0' style='background:#ffffff; border-radius:14px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,0.08);'>
+
+<tr>
+<td style='background:#43285D; padding:24px 30px; color:#ffffff;'>
+<h2 style='margin:0; font-size:24px;'>HIV Training Portal</h2>
+<p style='margin:6px 0 0; font-size:14px;'>Course Registration Notification</p>
+</td>
+</tr>
+
+<tr>
+<td style='padding:30px; color:#333333;'>
+<h3 style='margin-top:0; color:#43285D;'>Hello {WebUtility.HtmlEncode(participantName)},</h3>
+
+<p style='padding:14px; background:{statusBg}; color:{statusColor}; border-radius:10px; font-weight:700;'>
+{WebUtility.HtmlEncode(statusText)}
+</p>
+
+<h3 style='color:#43285D; margin-top:24px;'>Course Details</h3>
+
+<table width='100%' cellpadding='0' cellspacing='0'>
+<tr>
+<td style='padding:8px 0; font-weight:600; width:150px;'>Course:</td>
+<td style='padding:8px 0;'>{WebUtility.HtmlEncode(courseDetails.CourseTitle)}</td>
+</tr>
+<tr>
+<td style='padding:8px 0; font-weight:600;'>Date:</td>
+<td style='padding:8px 0;'>{dateText}</td>
+</tr>
+<tr>
+<td style='padding:8px 0; font-weight:600;'>Time:</td>
+<td style='padding:8px 0;'>{WebUtility.HtmlEncode(FormatTime(courseDetails.CourseTime))}</td>
+</tr>
+<tr>
+<td style='padding:8px 0; font-weight:600;'>Format:</td>
+<td style='padding:8px 0;'>{WebUtility.HtmlEncode(courseDetails.FormatLabel ?? "N/A")}</td>
+</tr>
+<tr>
+<td style='padding:8px 0; font-weight:600;'>Instructor:</td>
+<td style='padding:8px 0;'>{WebUtility.HtmlEncode(instructorText)}</td>
+</tr>
+{locationHtml}
+</table>
+
+{sessionsHtml}
+
+<p style='margin-top:24px;'>
+Please login to the HIV Training Portal to view your learning details.
+</p>
+
+<p style='margin-top:28px;'>
+Thank you,<br/>
+<strong>HIV Training Support Team</strong><br/>
+New York State Department of Health<br/>
+Email: support@example.com<br/>
+Phone: 000-000-0000
+</p>
+</td>
+</tr>
+
+<tr>
+<td style='background:#f4eff9; padding:16px 30px; font-size:12px; color:#6b7280; text-align:center;'>
+This is an automated message. Please do not reply to this email.
+</td>
+</tr>
+
+</table>
+
+</td>
+</tr>
+</table>
+
+</body>
+</html>";
+
+            await _emailService.SendEmailAsync(user.Email, subject, body);
         }
 
         private Task<int> GetRegisteredCountAsync(int courseId) =>
@@ -582,6 +843,46 @@ namespace HIVTraining.Controllers
                 });
 
                 // The delegate sets responsePayload to an IActionResult or null if it already returned
+
+                if (responsePayload is OkObjectResult okResult)
+                {
+                    dynamic value = okResult.Value!;
+
+                    try
+                    {
+                        var course = await _context.Courses.FindAsync(courseId);
+
+                        if (course != null)
+                        {
+                            bool isWaitlisted = false;
+                            int? waitlistNumber = null;
+
+                            var userCourse = await _context.UserCourses
+                                .FirstOrDefaultAsync(uc =>
+                                    uc.UserSysId == user.UserSysId &&
+                                    uc.CourseSysId == courseId &&
+                                    uc.Status == 1);
+
+                            if (userCourse != null)
+                            {
+                                isWaitlisted = userCourse.IsWaitlisted;
+                                waitlistNumber = userCourse.WaitlistNumber;
+                            }
+
+                            await SendCourseRegistrationEmailAsync(
+                                user,
+                                course,
+                                isWaitlisted,
+                                waitlistNumber
+                            );
+                        }
+                    }
+                    catch
+                    {
+                        // Do not fail registration if email fails.
+                    }
+                }
+
                 if (responsePayload is IActionResult result) return result;
 
                 // Fallback (shouldn’t happen)

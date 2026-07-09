@@ -14,7 +14,7 @@ namespace HIVTraining_Vue.Server.Services
             _smtpSettings = smtpSettings.Value;
         }
 
-        public async Task SendEmailAsync(string toEmail, string subject, string htmlMessage)
+        public async Task SendEmailAsync(string toEmail, string subject, string htmlMessage, string? ccEmail = null)
         {
             var settings = _smtpSettings.IsDevelopment
                 ? _smtpSettings.DevSettings
@@ -24,10 +24,7 @@ namespace HIVTraining_Vue.Server.Services
             {
                 Port = settings.Port,
                 EnableSsl = settings.EnableSSL,
-                Credentials = new NetworkCredential(
-                    settings.UserName,
-                    settings.Password
-                )
+                Credentials = new NetworkCredential(settings.UserName, settings.Password)
             };
 
             using var mailMessage = new MailMessage
@@ -39,6 +36,11 @@ namespace HIVTraining_Vue.Server.Services
             };
 
             mailMessage.To.Add(toEmail);
+
+            if (!string.IsNullOrWhiteSpace(ccEmail))
+            {
+                mailMessage.CC.Add(ccEmail);
+            }
 
             await smtpClient.SendMailAsync(mailMessage);
         }
