@@ -90,7 +90,7 @@ export default {
   const end = courseEndDate ? new Date(courseEndDate).toLocaleDateString("en-US") : "N/A";
 
   return `
-    <p>Registrant’s Name,</p>
+    <p>Dear Registrant,</p>
 
     <p>The following New York State Department of Health AIDS Institute course <strong>has been cancelled</strong>:</p>
 
@@ -136,15 +136,30 @@ export default {
 },
 async confirmCancellation() {
   try {
-    await apiClient.post('/CourseAdmin/cancel', {
-      courseSysId: this.course.courseSysId,
-      cancellReason: this.cancelReason
+    const response = await apiClient.post('/Email/cancel-course', {
+      courseId: this.course.courseSysId,
+      message: this.cancelReason
     });
+
+    console.log(
+      "Course cancellation response:",
+      response.data
+    );
+
     this.showConfirmDialog = false;
     this.showSuccessDialog = true;
+
   } catch (error) {
-    console.error('Cancellation failed:', error);
-    alert('An error occurred while cancelling the course.');
+    console.error(
+      'Cancellation failed:',
+      error
+    );
+
+    alert(
+      error.response?.data?.message ||
+      'An error occurred while cancelling the course.'
+    );
+
     this.showConfirmDialog = false;
   }
 },
