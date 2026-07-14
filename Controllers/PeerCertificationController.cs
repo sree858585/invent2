@@ -18,6 +18,8 @@ using System.Linq;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
+using HIVTraining_Vue.Server.Services;
+using System.Net;
 
 namespace HIVTraining_Vue.Server.Controllers
 {
@@ -28,6 +30,7 @@ namespace HIVTraining_Vue.Server.Controllers
         private readonly ApplicationDbContext _context;
         private readonly IWebHostEnvironment _env;
         private readonly BlobContainerClient _container;
+        private readonly IEmailService _emailService;
 
         private bool _containerReady = false;
 
@@ -54,10 +57,15 @@ namespace HIVTraining_Vue.Server.Controllers
             _containerReady = true;
         }
 
-        public PeerCertificationController(ApplicationDbContext context, IWebHostEnvironment env, IConfiguration config)
+        public PeerCertificationController(
+    ApplicationDbContext context,
+    IWebHostEnvironment env,
+    IConfiguration config,
+    IEmailService emailService)
         {
             _context = context;
             _env = env;
+            _emailService = emailService;
 
             var cs = config["Storage:ConnectionString"];
             var containerName = config["Storage:ContainerName"] ?? "peer-cert";
@@ -66,8 +74,6 @@ namespace HIVTraining_Vue.Server.Controllers
             _container = serviceClient.GetBlobContainerClient(containerName);
 
             QuestPDF.Settings.License = LicenseType.Community;
-
-
         }
 
         private static readonly string[] AllowedExt = new[] { ".pdf", ".doc", ".docx", ".png", ".jpg", ".jpeg" };
@@ -121,14 +127,19 @@ namespace HIVTraining_Vue.Server.Controllers
             var rows = await _context.LkPeerDocTypes
                 .AsNoTracking()
 .Where(x => step5Ids.Contains(x.PeerDocId) && x.Active == true).Select(x => new
-                {
-                    peerDocId = x.PeerDocId,
-                    name = x.Name,
-                    description = x.Description,
-                    docAbbrev = x.DocAbbrev,
-                    required = (x.PeerDocId == 2 || x.PeerDocId == 3 || x.PeerDocId == 7),
-                    active = x.Active
-                })
+{
+    peerDocId = x.PeerDocId,
+    name = x.Name,
+    description = x.Description,
+    docAbbrev = x.DocAbbrev,
+    required = (
+    x.PeerDocId == 2 ||
+    x.PeerDocId == 3 ||
+    x.PeerDocId == 7 ||
+    x.PeerDocId == 8
+),
+    active = x.Active
+})
                 .ToListAsync();
 
             // build final list in the required order; fallback if missing/inactive
@@ -142,7 +153,7 @@ namespace HIVTraining_Vue.Server.Controllers
                     name = fallbackNames.TryGetValue(id, out var nm) ? nm : $"Document {id}",
                     description = (string?)null,
                     docAbbrev = (string?)null,
-                    required = (id == 2 || id == 3 || id == 7),
+                    required = (id == 2 || id == 3 || id == 7 || id == 8),
                     active = true
                 };
             }).ToList();
@@ -586,7 +597,7 @@ namespace HIVTraining_Vue.Server.Controllers
 
             return File(pdfBytes, "application/pdf", fileName);
         }
-        
+
 
         private static void PdfSection(IContainer container, string title, Action<ColumnDescriptor> content)
         {
@@ -1045,7 +1056,7 @@ namespace HIVTraining_Vue.Server.Controllers
             });
         }
 
-       
+
         [HttpPut("applicant-info/{userId:guid}")]
         public async Task<IActionResult> SaveApplicantInfo(Guid userId, [FromBody] JsonElement body)
         {
@@ -1074,7 +1085,7 @@ namespace HIVTraining_Vue.Server.Controllers
                 return null;
             }
 
-            
+
 
             static bool? GetBool(JsonElement e, string name)
             {
@@ -1354,7 +1365,7 @@ namespace HIVTraining_Vue.Server.Controllers
             if (!peers.Any())
                 return Ok(new List<object>());
 
-            var requiredDocIds = new[] { 2, 3, 7 };
+            var requiredDocIds = new[] { 2, 3, 7, 8 };
             var requiredScormIds = PeerExamCourseMap
     .Select(x => x.Value.CourseSysId)
     .Distinct()
@@ -1650,7 +1661,7 @@ namespace HIVTraining_Vue.Server.Controllers
                 eligible = true
             });
 
-            
+
         }
 
         [HttpGet("admin/manage-edu-credits")]
@@ -2294,7 +2305,7 @@ namespace HIVTraining_Vue.Server.Controllers
             }
 
             // required step 5 docs
-            var requiredDocIds = new[] { 2, 3, 7 };
+            var requiredDocIds = new[] { 2, 3, 7, 8 };
 
             var uploadedRequiredDocs = await _context.PeerDocs
                 .AsNoTracking()
@@ -2349,6 +2360,25 @@ namespace HIVTraining_Vue.Server.Controllers
                 .Distinct()
                 .ToList();
 
+
+            Console.WriteLine("===== SUBMIT EXAM VALIDATION =====");
+            Console.WriteLine($"UserSysId: {user.UserSysId}");
+            Console.WriteLine($"PeerSysId: {peer.PeerSysId}");
+            Console.WriteLine($"CertHiv: {peer.CertHiv}");
+            Console.WriteLine($"CertHcv: {peer.CertHcv}");
+            Console.WriteLine($"CertHr: {peer.CertHr}");
+            Console.WriteLine($"CertPrep: {peer.CertPrep}");
+            Console.WriteLine($"CertCJ: {peer.CertCriminalJustice}");
+
+            Console.WriteLine(
+                $"Selected Tracks: {string.Join(", ", selectedTrackCodes)}"
+            );
+
+            Console.WriteLine(
+                $"Required SCORM IDs: {string.Join(", ", requiredScormIds)}"
+            );
+
+
             if (requiredScormIds.Any())
             {
                 var sessions = await _context.ScormAiccSessions
@@ -2373,24 +2403,102 @@ namespace HIVTraining_Vue.Server.Controllers
                     .Distinct()
                     .ToList();
 
+                Console.WriteLine(
+    $"Completed SCORM IDs: {string.Join(", ", completedScormIds)}"
+);
+
+                Console.WriteLine(
+                    $"Required Count: {requiredScormIds.Count}"
+                );
+
+                Console.WriteLine(
+                    $"Completed Count: {completedScormIds.Count}"
+                );
+
                 if (completedScormIds.Count != requiredScormIds.Count)
                     return BadRequest(new { message = "Please complete all mandatory certification exams before submitting." });
             }
 
             // FINAL SUCCESS: activate only here
+            var submittedDate = DateTime.UtcNow;
+
             peer.Active = true;
             peer.ApplicationPercentage = 100;
-
-            peer.DateModify = DateTime.UtcNow;
-
-
+            peer.DateModify = submittedDate;
 
             await _context.SaveChangesAsync();
+
+            var certificationTracks = new List<string>();
+
+            if (peer.CertHiv == true)
+                certificationTracks.Add("HIV");
+
+            if (peer.CertHcv == true)
+                certificationTracks.Add("HCV");
+
+            if (peer.CertHr == true)
+                certificationTracks.Add("Harm Reduction");
+
+            if (peer.CertPrep == true)
+                certificationTracks.Add("PrEP");
+
+            if (peer.CertCriminalJustice == true)
+                certificationTracks.Add("Criminal Justice");
+
+            var fullName = $"{user.FirstName} {user.LastName}".Trim();
+
+            if (string.IsNullOrWhiteSpace(fullName))
+                fullName = "Applicant";
+
+            var emailSent = false;
+            string? emailWarning = null;
+
+            if (!string.IsNullOrWhiteSpace(user.Email))
+            {
+                var emailSubject =
+                    "Peer Certification Application Submitted Successfully";
+
+                var emailBody = BuildPeerSubmissionEmailTemplate(
+                    fullName,
+                    certificationTracks,
+                    submittedDate
+                );
+
+                try
+                {
+                    await _emailService.SendEmailAsync(
+                        user.Email,
+                        emailSubject,
+                        emailBody
+                    );
+
+                    emailSent = true;
+                }
+                catch (Exception ex)
+                {
+                    // Application remains successfully submitted even if email fails.
+                    emailWarning =
+                        "The application was submitted, but the confirmation email could not be sent.";
+
+                    Console.WriteLine(
+                        $"Peer submission email failed for UserSysId " +
+                        $"{user.UserSysId}: {ex.Message}"
+                    );
+                }
+            }
+            else
+            {
+                emailWarning =
+                    "The application was submitted, but no email address was available.";
+            }
 
             return Ok(new
             {
                 message = "Peer certification application submitted successfully.",
-                active = peer.Active
+                active = peer.Active,
+                applicationPercentage = peer.ApplicationPercentage,
+                emailSent,
+                emailWarning
             });
         }
 
@@ -2623,6 +2731,256 @@ namespace HIVTraining_Vue.Server.Controllers
                 .ToListAsync();
 
             return Ok(new { genders = genderRows });
+        }
+
+
+        private static string BuildPeerSubmissionEmailTemplate(
+        string fullName,
+        IEnumerable<string> certificationTracks,
+        DateTime submittedDate)
+        {
+            var safeFullName = WebUtility.HtmlEncode(
+                string.IsNullOrWhiteSpace(fullName)
+                    ? "Applicant"
+                    : fullName
+            );
+
+            var trackList = certificationTracks?
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(WebUtility.HtmlEncode)
+                .ToList() ?? new List<string>();
+
+            var trackText = trackList.Any()
+                ? string.Join(", ", trackList)
+                : "Not specified";
+
+            var submittedDateText = submittedDate.ToString("MM/dd/yyyy hh:mm tt");
+
+            return $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='UTF-8'>
+</head>
+
+<body style='
+    margin:0;
+    padding:0;
+    background:#f4f4f7;
+    font-family:Segoe UI, Arial, sans-serif;'>
+
+<table
+    width='100%'
+    cellpadding='0'
+    cellspacing='0'
+    role='presentation'
+    style='background:#f4f4f7; padding:30px 12px;'>
+
+<tr>
+<td align='center'>
+
+<table
+    width='640'
+    cellpadding='0'
+    cellspacing='0'
+    role='presentation'
+    style='
+        width:100%;
+        max-width:640px;
+        background:#ffffff;
+        border-radius:14px;
+        overflow:hidden;
+        box-shadow:0 8px 24px rgba(0,0,0,0.08);'>
+
+<tr>
+<td style='
+    background:#43285D;
+    padding:24px 30px;
+    color:#ffffff;'>
+
+<h2 style='
+    margin:0;
+    font-size:24px;
+    line-height:1.3;'>
+
+HIV Training Portal
+
+</h2>
+
+<p style='
+    margin:6px 0 0;
+    font-size:14px;
+    color:#f3e8ff;'>
+
+Peer Certification Application
+
+</p>
+
+</td>
+</tr>
+
+<tr>
+<td style='padding:30px; color:#333333;'>
+
+<h3 style='
+    margin:0 0 20px;
+    color:#43285D;
+    font-size:20px;'>
+
+Hello {safeFullName},
+
+</h3>
+
+<div style='
+    padding:16px 18px;
+    background:#ecfdf3;
+    border-left:5px solid #16a34a;
+    border-radius:10px;
+    color:#166534;
+    font-size:16px;
+    font-weight:700;
+    margin-bottom:22px;'>
+
+Your Peer Certification application was submitted successfully.
+
+</div>
+
+<p style='
+    margin:0 0 16px;
+    font-size:15px;
+    line-height:1.7;'>
+
+Your application and supporting documents have been received and are now pending administrative review.
+
+</p>
+
+<p style='
+    margin:0 0 24px;
+    font-size:15px;
+    line-height:1.7;'>
+
+No further action is required from you at this time. Please allow the Peer Certification team time to review your submission. You will receive another notification after a decision has been made.
+
+</p>
+
+<h3 style='
+    color:#43285D;
+    margin:28px 0 12px;
+    font-size:18px;'>
+
+Submission Details
+
+</h3>
+
+<table
+    width='100%'
+    cellpadding='0'
+    cellspacing='0'
+    role='presentation'
+    style='
+        border-collapse:collapse;
+        border:1px solid #e5e7eb;
+        border-radius:10px;'>
+
+<tr>
+<td style='
+    width:190px;
+    padding:12px;
+    background:#f8f7fa;
+    border-bottom:1px solid #e5e7eb;
+    font-weight:600;'>
+
+Application Status
+
+</td>
+
+<td style='
+    padding:12px;
+    border-bottom:1px solid #e5e7eb;'>
+
+Submitted – Pending Review
+
+</td>
+</tr>
+
+<tr>
+<td style='
+    width:190px;
+    padding:12px;
+    background:#f8f7fa;
+    border-bottom:1px solid #e5e7eb;
+    font-weight:600;'>
+
+Certification Track(s)
+
+</td>
+
+<td style='
+    padding:12px;
+    border-bottom:1px solid #e5e7eb;'>
+
+{trackText}
+
+</td>
+</tr>
+
+<tr>
+<td style='
+    width:190px;
+    padding:12px;
+    background:#f8f7fa;
+    font-weight:600;'>
+
+Submitted On
+
+</td>
+
+<td style='padding:12px;'>
+
+{WebUtility.HtmlEncode(submittedDateText)}
+
+</td>
+</tr>
+
+</table>
+
+<p style='
+    margin-top:28px;
+    font-size:15px;
+    line-height:1.6;'>
+
+Thank you,<br/>
+
+<strong>HIV Training Support Team</strong><br/>
+
+New York State Department of Health
+
+</p>
+
+</td>
+</tr>
+
+<tr>
+<td style='
+    background:#f4eff9;
+    padding:16px 30px;
+    font-size:12px;
+    color:#6b7280;
+    text-align:center;'>
+
+This is an automated message. Please do not reply to this email.
+
+</td>
+</tr>
+
+</table>
+
+</td>
+</tr>
+</table>
+
+</body>
+</html>";
         }
     }
 }
