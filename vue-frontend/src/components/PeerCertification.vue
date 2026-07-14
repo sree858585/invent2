@@ -1,5 +1,34 @@
 ﻿<template>
     <div class="peer-page">
+
+        <!-- TOP CONFIDENTIALITY NOTICE -->
+        <section class="top-application-notice">
+            <div class="top-notice-icon">!</div>
+
+            <div class="top-notice-content">
+                <div class="top-notice-badge">Important — Review Before Applying</div>
+
+                <h2>Confidentiality and lived experience notice</h2>
+
+                <p>
+                    Selecting a certification track and completing the statement of lived
+                    experience may involve sharing personal information.
+                </p>
+
+                <p>
+                    Applications are reviewed confidentially by authorized NYS Department
+                    of Health staff and the Peer Certification Review Board.
+                </p>
+
+                <p class="top-notice-small">
+                    Before beginning your application, please review the
+                    <a :href="links.faq" target="_blank" rel="noopener">
+                        Peer Certification FAQ
+                    </a>.
+                </p>
+            </div>
+        </section>
+
         <!-- HERO -->
         <section class="hero">
             <div class="hero-content">
@@ -14,7 +43,7 @@
                 </p>
 
                 <div class="hero-actions">
-                    <button class="btn btn-primary" @click="goToApply">
+                    <button class="btn btn-primary" @click="openEligibilityModal">
                         Apply for Peer Certification
                     </button>
 
@@ -239,7 +268,7 @@
         </section>
 
         <!-- ELIGIBILITY -->
-        <section class="section">
+        <!--<section class="section">
             <div class="section-head">
                 <h2>Who Is Eligible for Certification?</h2>
             </div>
@@ -263,10 +292,9 @@
                 <div class="track-pill">PrEP</div>
                 <div class="track-pill">Criminal Justice</div>
             </div>
-        </section>
-
+        </section>-->
         <!-- CONFIDENTIALITY / APPLY -->
-        <section class="cta-section">
+        <!--<section class="cta-section">
             <div class="cta-card">
                 <div class="cta-copy">
                     <div class="cta-badge">Before You Apply</div>
@@ -293,7 +321,7 @@
                     </a>
                 </div>
             </div>
-        </section>
+        </section>-->
         <div v-if="showTrackModal" class="modal-overlay" @click.self="closeTrackModal">
             <div class="track-modal" role="dialog" aria-modal="true" aria-label="Track My Application">
                 <div class="track-modal-header">
@@ -389,6 +417,86 @@
                 </div>
             </div>
         </div>
+
+        <!-- ELIGIBILITY CONFIRMATION MODAL -->
+        <div v-if="showEligibilityModal"
+             class="modal-overlay"
+             @click.self="closeEligibilityModal">
+
+            <div class="eligibility-modal"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="eligibility-modal-title">
+
+                <div class="eligibility-modal-header">
+                    <div>
+                        <div class="eligibility-modal-badge">
+                            Eligibility Confirmation
+                        </div>
+
+                        <h2 id="eligibility-modal-title">
+                            Who is eligible for certification?
+                        </h2>
+                    </div>
+
+                    <button type="button"
+                            class="eligibility-close-button"
+                            aria-label="Close eligibility confirmation"
+                            @click="closeEligibilityModal">
+                        ✕
+                    </button>
+                </div>
+
+                <div class="eligibility-modal-body">
+                    <p>
+                        Any person who has a qualifying lived experience with HIV,
+                        Hepatitis C, Harm Reduction, Pre-Exposure Prophylaxis (PrEP),
+                        or Criminal Justice may be eligible for certification.
+                    </p>
+
+                    <p>
+                        In addition, the applicant must have work or practicum experience
+                        at an agency carrying out peer responsibilities and must demonstrate
+                        the competencies related to their selected certification track.
+                    </p>
+
+                    <p>
+                        This experience may include paid employment, stipend-supported work,
+                        supervised practicum experience, or volunteer work.
+                    </p>
+
+                    <div class="eligibility-confidentiality-note">
+                        <strong>Confidentiality notice</strong>
+
+                        <p>
+                            Your application may include personal lived-experience information.
+                            Application information is reviewed confidentially by authorized
+                            program staff and the Peer Certification Review Board.
+                        </p>
+                    </div>
+
+                    <div class="eligibility-question">
+                        Do you agree that you are eligible for certification based on the
+                        criteria above and understand the confidentiality notice?
+                    </div>
+                </div>
+
+                <div class="eligibility-modal-actions">
+                    <button type="button"
+                            class="eligibility-agree-button"
+                            @click="agreeAndContinue">
+                        Agree and Continue
+                    </button>
+
+                    <button type="button"
+                            class="eligibility-disagree-button"
+                            @click="disagreeEligibility">
+                        Disagree
+                    </button>
+                </div>
+            </div>
+        </div>
+
     </div>
 </template>
 <script>export default {
@@ -399,6 +507,7 @@
                 trackingLoading: false,
                 trackingError: "",
                 applicationTracks: [],
+                showEligibilityModal: false,
                 continuingEducationEligible: false,
         checkingContinuingEducation: false,
                 links: {
@@ -551,14 +660,54 @@
             }
         },
 
-        mounted() {
+      mounted() {
     this.checkContinuingEducationEligibility();
 },
 
+beforeUnmount() {
+    document.body.style.overflow = "";
+},
+
         methods: {
-            goToApply() {
-                this.$router.push("/peer-certification/apply");
-            },
+            openEligibilityModal() {
+
+        this.showEligibilityModal = true;
+
+        document.body.style.overflow = "hidden";
+
+    },
+
+    closeEligibilityModal() {
+
+        this.showEligibilityModal = false;
+
+        document.body.style.overflow = "";
+
+    },
+
+    agreeAndContinue() {
+
+        this.showEligibilityModal = false;
+
+        document.body.style.overflow = "";
+
+        this.$router.push("/peer-certification/apply");
+
+    },
+
+    disagreeEligibility() {
+
+        this.showEligibilityModal = false;
+
+        document.body.style.overflow = "";
+
+    },
+
+    goToApply() {
+
+        this.openEligibilityModal();
+
+    },
 
             getUserGuid() {
                 return localStorage.getItem("userId");
@@ -655,7 +804,7 @@ goToContinuingEducation() {
                 } finally {
                     this.trackingLoading = false;
                 }
-            }, 
+            },
 
             closeTrackModal() {
                 this.showTrackModal = false;
@@ -1147,6 +1296,7 @@ goToContinuingEducation() {
                 width: 100%;
             }
     }
+
     .btn-outline {
         background: transparent;
         color: #43285d;
@@ -1435,6 +1585,7 @@ goToContinuingEducation() {
                 padding-top: 0;
             }
     }
+
     .track-table-scroll {
         width: 100%;
         overflow-x: auto;
@@ -1478,5 +1629,237 @@ goToContinuingEducation() {
     .cell-muted {
         color: #6b7280;
         font-weight: 700;
+    }
+    /* Top confidentiality notice */
+    .top-application-notice {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 18px;
+        align-items: flex-start;
+        margin-bottom: 22px;
+        padding: 22px 24px;
+        border-radius: 22px;
+        border: 1px solid #d9cfea;
+        background: linear-gradient( 135deg, rgba(67, 40, 93, 0.08) 0%, rgba(255, 255, 255, 0.98) 70% );
+        box-shadow: 0 12px 30px rgba(31, 22, 48, 0.06);
+    }
+
+    .top-notice-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 46px;
+        height: 46px;
+        border-radius: 50%;
+        background: #43285d;
+        color: #ffffff;
+        font-size: 22px;
+        font-weight: 900;
+    }
+
+    .top-notice-content h2 {
+        margin: 4px 0 10px;
+        color: #1f1630;
+        font-size: 23px;
+        font-weight: 900;
+    }
+
+    .top-notice-content p {
+        margin: 5px 0;
+        color: #4b5563;
+        font-size: 14px;
+        line-height: 1.7;
+    }
+
+    .top-notice-badge {
+        display: inline-flex;
+        padding: 6px 11px;
+        border-radius: 999px;
+        background: rgba(67, 40, 93, 0.1);
+        color: #43285d;
+        font-size: 11px;
+        font-weight: 900;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .top-notice-small a {
+        color: #43285d;
+        font-weight: 900;
+    }
+
+
+    /* Eligibility popup */
+    .eligibility-modal {
+        width: min(760px, 100%);
+        max-height: 90vh;
+        overflow-y: auto;
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 24px;
+        box-shadow: 0 30px 80px rgba(15, 23, 42, 0.28);
+    }
+
+    .eligibility-modal-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 24px 26px 18px;
+        border-bottom: 1px solid #ece8f3;
+        background: linear-gradient(180deg, #faf8ff 0%, #ffffff 100%);
+    }
+
+        .eligibility-modal-header h2 {
+            margin: 0;
+            color: #1f1630;
+            font-size: 25px;
+            font-weight: 900;
+        }
+
+    .eligibility-modal-badge {
+        display: inline-flex;
+        margin-bottom: 9px;
+        padding: 6px 11px;
+        border-radius: 999px;
+        background: rgba(67, 40, 93, 0.09);
+        color: #43285d;
+        font-size: 11px;
+        font-weight: 900;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .eligibility-close-button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        width: 40px;
+        height: 40px;
+        border: none;
+        border-radius: 50%;
+        background: #f4f4f5;
+        color: #111827;
+        font-size: 16px;
+        font-weight: 900;
+        cursor: pointer;
+    }
+
+        .eligibility-close-button:hover {
+            background: #e5e7eb;
+        }
+
+    .eligibility-modal-body {
+        padding: 24px 28px;
+    }
+
+        .eligibility-modal-body > p {
+            margin: 0 0 15px;
+            color: #374151;
+            font-size: 15px;
+            line-height: 1.75;
+        }
+
+    .eligibility-confidentiality-note {
+        margin-top: 20px;
+        padding: 17px 18px;
+        border: 1px solid #ddd3eb;
+        border-radius: 16px;
+        background: #faf8ff;
+        color: #43285d;
+    }
+
+        .eligibility-confidentiality-note strong {
+            display: block;
+            margin-bottom: 7px;
+            font-size: 15px;
+            font-weight: 900;
+        }
+
+        .eligibility-confidentiality-note p {
+            margin: 0;
+            color: #4b5563;
+            font-size: 14px;
+            line-height: 1.7;
+        }
+
+    .eligibility-question {
+        margin-top: 22px;
+        padding: 17px 18px;
+        border-left: 4px solid #43285d;
+        border-radius: 0 14px 14px 0;
+        background: #f8fafc;
+        color: #1f2937;
+        font-size: 15px;
+        font-weight: 800;
+        line-height: 1.65;
+    }
+
+    .eligibility-modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        padding: 18px 26px 24px;
+        border-top: 1px solid #eceff3;
+    }
+
+    .eligibility-agree-button,
+    .eligibility-disagree-button {
+        min-width: 145px;
+        min-height: 46px;
+        padding: 11px 20px;
+        border-radius: 999px;
+        font-size: 14px;
+        font-weight: 850;
+        cursor: pointer;
+    }
+
+    .eligibility-agree-button {
+        border: none;
+        background: #43285d;
+        color: #ffffff;
+        box-shadow: 0 10px 22px rgba(67, 40, 93, 0.24);
+    }
+
+        .eligibility-agree-button:hover {
+            background: #361f4a;
+        }
+
+    .eligibility-disagree-button {
+        border: 1px solid #d1d5db;
+        background: #ffffff;
+        color: #374151;
+    }
+
+        .eligibility-disagree-button:hover {
+            background: #f3f4f6;
+        }
+
+    @media (max-width: 640px) {
+        .top-application-notice {
+            grid-template-columns: 1fr;
+            padding: 18px;
+        }
+
+        .eligibility-modal {
+            border-radius: 18px;
+        }
+
+        .eligibility-modal-header,
+        .eligibility-modal-body,
+        .eligibility-modal-actions {
+            padding-left: 18px;
+            padding-right: 18px;
+        }
+
+        .eligibility-modal-actions {
+            flex-direction: column;
+        }
+
+        .eligibility-agree-button,
+        .eligibility-disagree-button {
+            width: 100%;
+        }
     }
 </style>

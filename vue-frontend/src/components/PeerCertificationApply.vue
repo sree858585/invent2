@@ -228,35 +228,45 @@
                 <div v-else-if="currentStep === 2">
                     <h3 class="le-title">Step 2: Lived Experience</h3>
 
-                    <!-- optional summary banner -->
-                    <div v-if="step2HasErrors" class="le-alert" role="alert" aria-live="polite">
+                    <div v-if="step2HasErrors"
+                         class="le-alert"
+                         role="alert"
+                         aria-live="polite">
                         Please complete all three required responses. Each response must be at least 500 characters.
                     </div>
 
-                    <div class="le-card">
+                    <div class="le-card le-instructions">
                         <p class="le-text">
-                            As of May 26, 2017, all peer workers applying for AI Certification are required to submit
-                            responses to three questions related to their lived experience of HIV, HCV and/or Harm
-                            Reduction, regardless of whether they completed Foundational Training.
+                            All applicants are required to submit responses to three questions related to their
+                            lived experience of HIV, HCV, Harm Reduction, PrEP and/or Criminal Justice.
                         </p>
 
                         <p class="le-text">
-                            <strong>Questions:</strong><br />
-                            The following questions allow our AI Peer Worker Certification Review Board to gauge your
-                            personal preparedness for peer work in lieu of completing Foundational Trainings. In order for
-                            your responses to be saved, you need to answer <strong>ALL THREE QUESTIONS</strong>. Each
-                            question is required to have a 500 character response.
+                            Your responses allow the New York State Peer Worker Certification Program Review Board
+                            to gauge your personal preparedness for certification.
                         </p>
 
-                        <p class="le-note"><strong>All answers must be at least 500 characters.</strong></p>
+                        <p class="le-note">
+                            <strong>
+                                All answers must be at least 500 characters.
+                            </strong>
+                            <span>
+                                A character is a letter, number, punctuation mark, or space—not a word.
+                            </span>
+                        </p>
+
+                        <p class="le-save-reminder">
+                            Be sure to save your responses before leaving this page.
+                        </p>
                     </div>
 
                     <div class="le-grid">
-                        <!-- Q1 -->
+                        <!-- Question 1 -->
                         <div class="le-q">
                             <label class="le-label" for="expCommitment">
                                 <span class="req">*</span>
-                                Describe your personal commitment to wellness as it relates to your lived experience of HIV, HCV or harm reduction:
+                                Describe your personal commitment to wellness as it relates to your lived
+                                experience of the track(s) you are applying for:
                             </label>
 
                             <textarea id="expCommitment"
@@ -265,24 +275,31 @@
                                       rows="6"
                                       :class="{ error: errors.ExperienceCommitment }"
                                       :aria-invalid="!!errors.ExperienceCommitment"
-                                      :aria-describedby="errors.ExperienceCommitment ? 'errCommitment' : 'helpCommitment'"></textarea>
+                                      :aria-describedby="errors.ExperienceCommitment
+                          ? 'errCommitment'
+                          : 'helpCommitment'"></textarea>
 
                             <div class="le-meta">
-                                <span id="helpCommitment" :class="{ 'le-bad': commitmentLen < 500 }">
+                                <span id="helpCommitment"
+                                      :class="{ 'le-bad': commitmentLen < 500 }">
                                     {{ commitmentLen }} / 500 characters
                                 </span>
 
-                                <span v-if="errors.ExperienceCommitment" id="errCommitment" class="error-text" role="alert">
+                                <span v-if="errors.ExperienceCommitment"
+                                      id="errCommitment"
+                                      class="error-text"
+                                      role="alert">
                                     {{ errors.ExperienceCommitment }}
                                 </span>
                             </div>
                         </div>
 
-                        <!-- Q2 -->
+                        <!-- Question 2 -->
                         <div class="le-q">
                             <label class="le-label" for="expChallenges">
                                 <span class="req">*</span>
-                                Describe 2 challenges you experienced in your journey to wellness and how you overcame them:
+                                Describe 2 challenges you experienced in your journey to wellness and how
+                                you overcame them:
                             </label>
 
                             <textarea id="expChallenges"
@@ -291,20 +308,26 @@
                                       rows="6"
                                       :class="{ error: errors.ExperienceChallenges }"
                                       :aria-invalid="!!errors.ExperienceChallenges"
-                                      :aria-describedby="errors.ExperienceChallenges ? 'errChallenges' : 'helpChallenges'"></textarea>
+                                      :aria-describedby="errors.ExperienceChallenges
+                          ? 'errChallenges'
+                          : 'helpChallenges'"></textarea>
 
                             <div class="le-meta">
-                                <span id="helpChallenges" :class="{ 'le-bad': challengesLen < 500 }">
+                                <span id="helpChallenges"
+                                      :class="{ 'le-bad': challengesLen < 500 }">
                                     {{ challengesLen }} / 500 characters
                                 </span>
 
-                                <span v-if="errors.ExperienceChallenges" id="errChallenges" class="error-text" role="alert">
+                                <span v-if="errors.ExperienceChallenges"
+                                      id="errChallenges"
+                                      class="error-text"
+                                      role="alert">
                                     {{ errors.ExperienceChallenges }}
                                 </span>
                             </div>
                         </div>
 
-                        <!-- Q3 -->
+                        <!-- Question 3 -->
                         <div class="le-q">
                             <label class="le-label" for="expWhy">
                                 <span class="req">*</span>
@@ -317,14 +340,20 @@
                                       rows="6"
                                       :class="{ error: errors.ExperienceWhy }"
                                       :aria-invalid="!!errors.ExperienceWhy"
-                                      :aria-describedby="errors.ExperienceWhy ? 'errWhy' : 'helpWhy'"></textarea>
+                                      :aria-describedby="errors.ExperienceWhy
+                          ? 'errWhy'
+                          : 'helpWhy'"></textarea>
 
                             <div class="le-meta">
-                                <span id="helpWhy" :class="{ 'le-bad': whyLen < 500 }">
+                                <span id="helpWhy"
+                                      :class="{ 'le-bad': whyLen < 500 }">
                                     {{ whyLen }} / 500 characters
                                 </span>
 
-                                <span v-if="errors.ExperienceWhy" id="errWhy" class="error-text" role="alert">
+                                <span v-if="errors.ExperienceWhy"
+                                      id="errWhy"
+                                      class="error-text"
+                                      role="alert">
                                     {{ errors.ExperienceWhy }}
                                 </span>
                             </div>
@@ -333,39 +362,53 @@
 
                     <div class="le-card le-card-tight">
                         <div class="le-check">
-                            <input id="selfcare" type="checkbox" v-model="form.SelfCare" />
+                            <input id="selfcare"
+                                   type="checkbox"
+                                   v-model="form.SelfCare" />
+
                             <label for="selfcare" class="le-text">
                                 <strong>Peer Worker Certification Self-Care</strong><br />
-                                Did you review and complete the <u>Peer Worker Certification Self-Care Worksheet</u>?
+                                Did you review and complete the
+                                <u>Peer Worker Certification Self-Care Worksheet</u>?
                             </label>
                         </div>
 
                         <p class="le-text">
-                            The Self-Care Worksheet helps Peer Workers reflect on their own self-care and consider if
-                            Foundational might be a good option for them.
+                            The Self-Care Worksheet helps peer workers reflect on their own self-care and
+                            consider whether Foundational Training may be helpful for them.
                         </p>
                     </div>
 
-                    <div class="le-card">
-                        <h4 class="le-h4">Foundational Training (Optional)</h4>
+                    <!--<div class="le-card">
+                    <h4 class="le-h4">Foundational Training (Optional)</h4>
 
-                        <p class="le-text">
-                            All potential AIDS Institute (AI) Peer Workers are expected to be committed to their own wellness,
-                            have dealt with their health status, and are comfortable sharing their own lived experience in order
-                            to support others through their journey to wellness. For some, Foundational Training is necessary,
-                            and for others, the work to be done to get to this point can be done independently.
-                        </p>
+                    <p class="le-text">
+                        All potential AIDS Institute Peer Workers are expected to be committed to their
+                        own wellness, have addressed their health status, and be comfortable sharing
+                        relevant lived experience to support others in their journey to wellness.
+                    </p>
 
-                        <p class="le-reminder">
-                            <strong>Reminder:</strong> Only foundational training taken after January 1st, 2012 will count toward certification.
-                        </p>
+                    <p class="le-text">
+                        Foundational Training may be helpful for some applicants, while others may have
+                        completed this preparation through other personal, professional, or educational
+                        experiences.
+                    </p>
 
-                        <p class="le-info">
-                            <strong>Note:</strong> Document upload has been moved to <strong>Step 5: Additional Uploads</strong>.
-                        </p>
+                    <p class="le-reminder">
+                        <strong>Reminder:</strong>
+                        Only Foundational Training completed after January 1, 2012 will count toward certification.
+                    </p>
+
+                    <p class="le-info">
+                        <strong>Note:</strong>
+                        Document upload is available in
+                        <strong>Step 5: Additional Uploads</strong>.
+                    </p>
+                </div>-->
+
+                    <div class="span-2 muted" v-if="saveMessage">
+                        {{ saveMessage }}
                     </div>
-
-                    <div class="span-2 muted" v-if="saveMessage">{{ saveMessage }}</div>
                 </div>
 
                 <div v-else-if="currentStep === 3">
@@ -468,18 +511,16 @@
 
                         <div class="sv-check span-2">
                             <label class="sv-checkline">
-                                <input type="checkbox" v-model="form.ComplPracticum" />
-                                <span>Have you completed a practicum?</span>
-                            </label>
-
-                            <label class="sv-checkline">
                                 <input type="checkbox"
-                                       v-model="form.ComplPracticumMin"
-                                       :disabled="form.ComplPracticum !== true" />
-                                <span>Was practicum a minimum of 500 hours?</span>
+                                       :checked="form.ComplPracticum === true && form.ComplPracticumMin === true"
+                                       @change="handlePracticumCheckboxChange" />
+
+                                <span>Have you completed a 500-hour practicum?</span>
                             </label>
 
-                            <div v-if="errors.ComplPracticumMin" class="error-text">{{ errors.ComplPracticumMin }}</div>
+                            <div v-if="errors.ComplPracticumMin" class="error-text">
+                                {{ errors.ComplPracticumMin }}
+                            </div>
                         </div>
 
                         <div class="sv-dates span-2">
@@ -937,7 +978,7 @@
                             <button v-else
                                     class="btn btn-primary"
                                     type="button"
-                                    @click="submitApplication"
+                                    @click="openAttestationModal"
                                     :disabled="saving">
                                 Submit Application
                             </button>
@@ -946,6 +987,85 @@
                 </div>
             </div>
         </div>
+
+        <!-- Submit Attestation Modal -->
+        <div v-if="showAttestationModal"
+             class="modal-overlay attestation-overlay"
+             @click.self="closeAttestationModal">
+
+            <div class="modal-card attestation-modal"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="attestationTitle">
+
+                <div class="modal-head attestation-head">
+                    <div>
+                        <h3 id="attestationTitle" class="attestation-title">
+                            Application Attestation
+                        </h3>
+
+                        <p class="attestation-subtitle">
+                            Please confirm the statement below before submitting your application.
+                        </p>
+                    </div>
+
+                    <button class="btn btn-ghost"
+                            type="button"
+                            aria-label="Close attestation"
+                            @click="closeAttestationModal"
+                            :disabled="saving">
+                        ✕
+                    </button>
+                </div>
+
+                <div class="modal-body attestation-body">
+                    <div class="attestation-statement">
+                        <label class="attestation-checkline"
+                               :class="{ 'attestation-check-error': attestationError }">
+
+                            <input id="applicationAttestation"
+                                   type="checkbox"
+                                   v-model="attestationAccepted"
+                                   :disabled="saving"
+                                   @change="clearAttestationError" />
+
+                            <span>
+                                I attest that all documents and information submitted as part
+                                of this Peer Certification application are true, presented
+                                honestly and are accurate.
+                            </span>
+                        </label>
+                    </div>
+
+                    <div v-if="attestationError"
+                         class="error-text attestation-error"
+                         role="alert">
+                        {{ attestationError }}
+                    </div>
+
+                    <p class="attestation-note">
+                        You must check the box to successfully submit your application.
+                    </p>
+
+                    <div class="attestation-actions">
+                        <button class="btn btn-secondary"
+                                type="button"
+                                @click="closeAttestationModal"
+                                :disabled="saving">
+                            Cancel
+                        </button>
+
+                        <button class="btn btn-primary"
+                                type="button"
+                                @click="confirmAttestationAndSubmit"
+                                :disabled="saving">
+                            {{ saving ? "Submitting..." : "Confirm & Submit" }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div v-if="showSubmitSuccessModal" class="modal-overlay submit-overlay">
             <div class="modal-card submit-success-modal"
                  role="dialog"
@@ -972,6 +1092,8 @@
                 </div>
             </div>
         </div>
+
+
     </div>
 </template>
 <script>import LoginModal from "@/components/LoginComponent.vue";
@@ -1008,6 +1130,12 @@ import ScormPlayer from "@/components/ScormPlayer.vue";
                 saveMessage: "",
                 errors: {},
                 showSubmitSuccessModal: false,
+
+                showAttestationModal: false,
+
+                attestationAccepted: false,
+
+                attestationError: "",
 
                 steps: [
                     { id: 1, label: "Applicant Info" },
@@ -1127,11 +1255,16 @@ import ScormPlayer from "@/components/ScormPlayer.vue";
                 return (this.form.ExperienceChallenges || "").trim().length;
             },
             requiredDocTypes() {
-                return (this.docTypes || []).filter((d) => d.required === true);
-            },
-            optionalDocTypes() {
-                return (this.docTypes || []).filter((d) => d.required !== true);
-            },
+    return (this.docTypes || []).filter(
+        d => d.required === true
+    );
+},
+
+optionalDocTypes() {
+    return (this.docTypes || []).filter(
+        d => d.required !== true
+    );
+},
             whyLen() {
                 return (this.form.ExperienceWhy || "").trim().length;
             },
@@ -1206,6 +1339,24 @@ completedExamCount() {
         },
 
         methods: {
+
+        handlePracticumCheckboxChange(event) {
+    const checked = event.target.checked;
+
+    this.form.ComplPracticum = checked;
+    this.form.ComplPracticumMin = checked;
+
+    if (!checked) {
+        this.form.PracticumBDate = null;
+        this.form.PracticumEDate = null;
+
+        const updatedErrors = { ...this.errors };
+        delete updatedErrors.ComplPracticumMin;
+        delete updatedErrors.PracticumBDate;
+        delete updatedErrors.PracticumEDate;
+        this.errors = updatedErrors;
+    }
+},
             
             async apiFetch(url, options = {}) {
                 const fullUrl = url.startsWith("/api")
@@ -1635,67 +1786,145 @@ validateStep6() {
             },
 
             async loadStep5DocTypes() {
-                const requiredOrder = [3, 2, 4, 8, 6, 7];
+    // Order of documents displayed in Step 5
+    const documentOrder = [3, 2, 8, 7, 4, 6];
 
-                const fallback = [
-                    { peerDocId: 3, name: "Code of Ethics", required: true, description: null },
-                    { peerDocId: 2, name: "Resume", required: true, description: null },
-                    { peerDocId: 4, name: "Foundational Training Certificate", required: false, description: null },
-                    {
-                        peerDocId: 8,
-                        name: "Safe Talk Suicide Alertness Training Certificate",
-                        required: false,
-                        description: null,
-                    },
-                    { peerDocId: 6, name: "Other Certificates / Diplomas", required: false, description: null },
-                    { peerDocId: 7, name: "Supervisor Practicum Evaluation Form", required: true, description: null },
-                ];
+    const fallback = [
+        {
+            peerDocId: 3,
+            name: "Code of Ethics",
+            required: true,
+            description: null
+        },
+        {
+            peerDocId: 2,
+            name: "Resume",
+            required: true,
+            description: null
+        },
+        {
+            peerDocId: 8,
+            name: "Suicide Prevention Training (Safe TALK / Living Works)",
+            required: true,
+            description: null
+        },
+        {
+            peerDocId: 7,
+            name: "Supervisor Practicum Evaluation Form",
+            required: true,
+            description: null
+        },
+        {
+            peerDocId: 4,
+            name: "Foundational Training Certificate",
+            required: false,
+            description: null
+        },
+        {
+            peerDocId: 6,
+            name: "Other Certificates / Diplomas",
+            required: false,
+            description: null
+        }
+    ];
 
-                try {
-                    const res = await this.apiFetch("/api/PeerCertification/step5-doc-types");
-                    let api = [];
-                    if (res.ok) api = await res.json();
+    try {
+        const res = await this.apiFetch(
+            "/api/PeerCertification/step5-doc-types"
+        );
 
-                    const safeMerge = (base, incoming) => {
-                        const out = { ...(base || {}) };
-                        for (const [k, v] of Object.entries(incoming || {})) {
-                            if (v === null || v === undefined) continue;
-                            if (typeof v === "string" && v.trim() === "") continue;
-                            out[k] = v;
-                        }
-                        return out;
-                    };
+        let apiItems = [];
 
-                    const map = new Map();
-                    for (const f of fallback) map.set(f.peerDocId, f);
+        if (res.ok) {
+            const data = await res.json();
+            apiItems = this.unwrapDotNetList(data);
+        }
 
-                    for (const a of api || []) {
-                        const id = Number(a.peerDocId ?? a.PeerDocId);
-                        if (!id) continue;
+        const safeMerge = (base, incoming) => {
+            const merged = { ...(base || {}) };
 
-                        const normalized = {
-                            peerDocId: id,
-                            name: a.name ?? a.Name,
-                            required: a.required ?? a.Required,
-                            description: a.description ?? a.Description,
-                        };
+            for (const [key, value] of Object.entries(incoming || {})) {
+                if (value === null || value === undefined) continue;
 
-                        map.set(id, safeMerge(map.get(id), normalized));
-                    }
-
-                    const allIds = Array.from(map.keys());
-                    const orderedIds = [
-                        ...requiredOrder.filter((id) => map.has(id)),
-                        ...allIds.filter((id) => !requiredOrder.includes(id)),
-                    ];
-
-                    // ✅ FIX: do NOT overwrite docTypes again (keeps optional docs too)
-                    this.docTypes = orderedIds.map((id) => map.get(id)).filter(Boolean);
-                } catch {
-                    this.docTypes = fallback;
+                if (
+                    typeof value === "string" &&
+                    value.trim() === ""
+                ) {
+                    continue;
                 }
-            },
 
+                merged[key] = value;
+            }
+
+            return merged;
+        };
+
+        const documentMap = new Map();
+
+        // Add fallback records first
+        for (const item of fallback) {
+            documentMap.set(item.peerDocId, item);
+        }
+
+        // Merge backend records
+        for (const apiItem of apiItems) {
+            const id = Number(
+                apiItem.peerDocId ??
+                apiItem.PeerDocId
+            );
+
+            if (!id) continue;
+
+            const normalized = {
+                peerDocId: id,
+                name: apiItem.name ?? apiItem.Name,
+                required: apiItem.required ?? apiItem.Required,
+                description:
+                    apiItem.description ??
+                    apiItem.Description
+            };
+
+            documentMap.set(
+                id,
+                safeMerge(documentMap.get(id), normalized)
+            );
+        }
+
+        /*
+         * Force the newly requested business rule.
+         * This prevents the API's old name or old optional status
+         * from overriding the frontend requirement.
+         */
+        if (documentMap.has(8)) {
+            documentMap.set(8, {
+                ...documentMap.get(8),
+                name: "Suicide Prevention Training (Safe TALK / Living Works)",
+                required: true
+            });
+        } else {
+            documentMap.set(8, {
+                peerDocId: 8,
+                name: "Suicide Prevention Training (Safe TALK / Living Works)",
+                required: true,
+                description: null
+            });
+        }
+
+        const allIds = Array.from(documentMap.keys());
+
+        const orderedIds = [
+            ...documentOrder.filter(id => documentMap.has(id)),
+            ...allIds.filter(id => !documentOrder.includes(id))
+        ];
+
+        this.docTypes = orderedIds
+            .map(id => documentMap.get(id))
+            .filter(Boolean);
+    } catch (error) {
+        // Fallback already contains the updated required document
+        this.docTypes = fallback;
+    }
+},
             // keep only digits (and optional leading +1 handling)
             digitsOnly(v) {
                 return (v || "").replace(/\D/g, "");
@@ -1747,34 +1976,48 @@ validateStep6() {
             },
 
             validateStep2() {
-                const e = { ...this.errors };
+    const e = { ...this.errors };
 
-                const min500Required = (key, message) => {
-                    const val = (this.form[key] || "").trim();
-                    if (!val) {
-                        e[key] = message;
-                        return;
-                    }
-                    if (val.length < 500) {
-                        e[key] = `${message} (Minimum 500 characters required. Current: ${val.length})`;
-                        return;
-                    }
-                    delete e[key];
-                };
+    const min500Required = (key, message) => {
+        const val = (this.form[key] || "").trim();
 
-                min500Required(
-                    "ExperienceCommitment",
-                    "Please describe your personal commitment to wellness related to your lived experience (HIV, HCV, or harm reduction)."
-                );
-                min500Required(
-                    "ExperienceChallenges",
-                    "Please describe two challenges you experienced in your journey to wellness and how you overcame them."
-                );
-                min500Required("ExperienceWhy", "Please explain why you would like to serve as a peer worker.");
+        if (!val) {
+            e[key] = message;
+            return;
+        }
 
-                this.errors = e;
-                return !e.ExperienceCommitment && !e.ExperienceChallenges && !e.ExperienceWhy;
-            },
+        if (val.length < 500) {
+            e[key] =
+                `${message} Minimum 500 characters required. Current: ${val.length}.`;
+            return;
+        }
+
+        delete e[key];
+    };
+
+    min500Required(
+        "ExperienceCommitment",
+        "Please describe your personal commitment to wellness as it relates to the lived experience track(s) you are applying for."
+    );
+
+    min500Required(
+        "ExperienceChallenges",
+        "Please describe two challenges you experienced in your journey to wellness and how you overcame them."
+    );
+
+    min500Required(
+        "ExperienceWhy",
+        "Please explain why you would like to serve as a peer worker."
+    );
+
+    this.errors = e;
+
+    return (
+        !e.ExperienceCommitment &&
+        !e.ExperienceChallenges &&
+        !e.ExperienceWhy
+    );
+},
 
             validateStep3() {
                 const e = { ...this.errors };
@@ -1870,20 +2113,30 @@ validateStep6() {
             },
 
             validateStep5() {
-                const e = { ...this.errors };
-                const requiredIds = (this.docTypes || []).filter((x) => x.required).map((x) => x.peerDocId);
+    const e = { ...this.errors };
 
-                const missing = requiredIds.filter((id) => {
-                    if (id === 3) return this.ethics.signed !== true;
-                    return this.docsForType(id).length === 0;
-                });
+    const requiredIds = (this.docTypes || [])
+        .filter(x => x.required)
+        .map(x => x.peerDocId);
 
-                if (missing.length > 0) e.Step5 = "Please complete all required items before proceeding.";
-                else delete e.Step5;
+    const missing = requiredIds.filter(id => {
+        if (id === 3) {
+            return this.ethics.signed !== true;
+        }
 
-                this.errors = e;
-                return !e.Step5;
-            },
+        return this.docsForType(id).length === 0;
+    });
+
+    if (missing.length > 0) {
+        e.Step5 =
+            "Please complete all required items before proceeding.";
+    } else {
+        delete e.Step5;
+    }
+
+    this.errors = e;
+    return !e.Step5;
+},
 
             async loadUploads() {
                 const id = this.getUserGuid();
@@ -2387,41 +2640,117 @@ this.form.CertificationTrack = normalizedTracks
     window.scrollTo({ top: 0, behavior: "smooth" });
 },
 
-            async submitApplication() {
-                const id = this.getUserGuid();
-                if (!id) {
-                    this.showLogin = true;
-                    this.saveMessage = "Please login to submit.";
+
+            openAttestationModal() {
+                this.attestationAccepted = false;
+                this.attestationError = "";
+                this.showAttestationModal = true;
+            },
+
+            closeAttestationModal() {
+                if (this.saving) return;
+
+                this.showAttestationModal = false;
+                this.attestationAccepted = false;
+                this.attestationError = "";
+            },
+
+            clearAttestationError() {
+                if (this.attestationAccepted === true) {
+                    this.attestationError = "";
+                }
+            },
+
+            async confirmAttestationAndSubmit() {
+                if (this.attestationAccepted !== true) {
+                    this.attestationError =
+                        "Please check the attestation box before submitting your application.";
                     return;
                 }
 
-                const saved = await this.saveDraft(true);
-                if (!saved) return;
+                this.attestationError = "";
 
-                if (!this.validateStep6()) {
-                    this.saveMessage = this.errors.Step6;
+                const submitted = await this.submitApplication();
+
+                if (!submitted) {
                     return;
+                }
+
+                this.showAttestationModal = false;
+                this.attestationAccepted = false;
+                this.attestationError = "";
+
+                await this.$nextTick();
+
+                this.showSubmitSuccessModal = true;
+            },
+
+            async submitApplication() {
+                const id = this.getUserGuid();
+
+                if (!id) {
+                    this.showLogin = true;
+                    this.attestationError = "Please login to submit.";
+                    return false;
                 }
 
                 this.saving = true;
                 this.saveMessage = "";
+                this.attestationError = "";
 
                 try {
-                    const res = await this.apiFetch(`/api/PeerCertification/submit/${id}`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" }
-                    });
+                    // Save the current Step 6 information first.
+                    const saved = await this.saveDraft(true);
 
-                    if (!res.ok) {
-                        this.saveMessage = `Submit failed: ${await res.text()}`;
-                        return;
+                    if (!saved) {
+                        this.attestationError =
+                            this.saveMessage || "Unable to save the application before submission.";
+                        return false;
                     }
 
-                    await res.json();
+                    if (!this.validateStep6()) {
+                        this.attestationError =
+                            this.errors.Step6 ||
+                            "Please complete all mandatory exams before submitting.";
+                        return false;
+                    }
 
-                    this.showSubmitSuccessModal = true;
+                    const res = await this.apiFetch(
+                        `/api/PeerCertification/submit/${id}`,
+                        {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json"
+                            }
+                        }
+                    );
+
+                    let responseData = null;
+                    const responseText = await res.text();
+
+                    if (responseText) {
+                        try {
+                            responseData = JSON.parse(responseText);
+                        } catch {
+                            responseData = null;
+                        }
+                    }
+
+                    if (!res.ok) {
+                        this.attestationError =
+                            responseData?.message ||
+                            responseText ||
+                            `Submission failed with status ${res.status}.`;
+
+                        return false;
+                    }
+
+                    return true;
                 } catch (e) {
-                    this.saveMessage = e?.message || "Submit failed (network error).";
+                    this.attestationError =
+                        e?.message || "Submission failed because of a network error.";
+
+                    return false;
                 } finally {
                     this.saving = false;
                 }
@@ -3861,4 +4190,147 @@ this.form.CertificationTrack = normalizedTracks
         .track-option.disabled span {
             cursor: not-allowed;
         }
+    .le-instructions {
+        border-left: 5px solid #43285d;
+        background: linear-gradient(180deg, #ffffff 0%, #faf8ff 100%);
+    }
+
+    .le-note {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin: 14px 0 0;
+        padding: 12px 14px;
+        border-radius: 12px;
+        background: #f3f4f6;
+        color: #111827;
+        font-size: 15px;
+        line-height: 1.6;
+    }
+
+    .le-save-reminder {
+        margin: 12px 0 0;
+        color: #43285d;
+        font-size: 15px;
+        font-weight: 800;
+    }
+    .attestation-overlay {
+        background: rgba(15, 23, 42, 0.62);
+        backdrop-filter: blur(4px);
+    }
+
+    .attestation-modal {
+        width: min(650px, 94vw);
+        max-height: unset;
+        border-radius: 22px;
+        overflow: hidden;
+        background: linear-gradient(180deg, #ffffff 0%, #faf8ff 100%);
+        box-shadow: 0 28px 60px rgba(15, 23, 42, 0.28);
+    }
+
+    .attestation-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 22px 24px 16px;
+        border-bottom: 1px solid #ece7f3;
+    }
+
+    .attestation-title {
+        margin: 0;
+        color: #1f1630;
+        font-size: 22px;
+        font-weight: 900;
+    }
+
+    .attestation-subtitle {
+        margin: 7px 0 0;
+        color: #6b7280;
+        font-size: 14px;
+        line-height: 1.5;
+    }
+
+    .attestation-body {
+        padding: 22px 24px 24px;
+        overflow: visible;
+    }
+
+    .attestation-statement {
+        padding: 17px 18px;
+        border: 1px solid #ddd6e8;
+        border-left: 5px solid #43285d;
+        border-radius: 14px;
+        background: #faf8ff;
+    }
+
+    .attestation-checkline {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        cursor: pointer;
+        color: #1f2937;
+        font-size: 15px;
+        font-weight: 700;
+        line-height: 1.65;
+    }
+
+        .attestation-checkline input {
+            width: 19px;
+            height: 19px;
+            flex: 0 0 auto;
+            margin-top: 3px;
+            accent-color: #43285d;
+            cursor: pointer;
+        }
+
+    .attestation-check-error {
+        color: #991b1b;
+    }
+
+    .attestation-error {
+        margin-top: 10px;
+        font-size: 13px;
+        font-weight: 700;
+    }
+
+    .attestation-note {
+        margin: 12px 0 0;
+        color: #6b7280;
+        font-size: 13px;
+    }
+
+    .attestation-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        margin-top: 22px;
+    }
+
+        .attestation-actions .btn {
+            min-width: 140px;
+        }
+
+    @media (max-width: 640px) {
+        .attestation-head {
+            padding: 18px 18px 14px;
+        }
+
+        .attestation-title {
+            font-size: 20px;
+        }
+
+        .attestation-body {
+            padding: 18px;
+        }
+
+        .attestation-actions {
+            flex-direction: column-reverse;
+        }
+
+            .attestation-actions .btn {
+                width: 100%;
+                min-width: 0;
+            }
+    }
 </style>
