@@ -14,12 +14,13 @@ using System.Text.Json;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Microsoft.Extensions.Configuration;
-using System.Linq;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using HIVTraining_Vue.Server.Services;
 using System.Net;
+using HIVTraining_Vue.Server.DTOs.PeerCertification;
+using HIVTraining_Vue.Server.Models.Enums;
 
 namespace HIVTraining_Vue.Server.Controllers
 {
@@ -55,6 +56,53 @@ namespace HIVTraining_Vue.Server.Controllers
             );
 
             _containerReady = true;
+        }
+
+        private static string GetReviewStatusText(int status)
+        {
+            return status switch
+            {
+                (int)EduCreditReviewStatus.Approved => "Approved",
+                (int)EduCreditReviewStatus.Rejected => "Rejected",
+                _ => "Pending"
+            };
+        }
+
+        private static bool IsValidReviewStatus(int status)
+        {
+            return Enum.IsDefined(typeof(EduCreditReviewStatus), status);
+        }
+
+        private static string BuildDisplayFileName(
+            string requestedName,
+            string existingBlobPath)
+        {
+            var existingExtension = Path.GetExtension(existingBlobPath);
+
+            var suppliedName = Path.GetFileName(requestedName)?.Trim();
+
+            if (string.IsNullOrWhiteSpace(suppliedName))
+                throw new ArgumentException("Document name is required.");
+
+            suppliedName = SafeFileName(suppliedName);
+
+            var suppliedExtension = Path.GetExtension(suppliedName);
+
+            // Admin may enter only the name without the extension.
+            if (string.IsNullOrWhiteSpace(suppliedExtension))
+            {
+                suppliedName += existingExtension;
+            }
+            else if (!string.Equals(
+                         suppliedExtension,
+                         existingExtension,
+                         StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException(
+                    $"The document extension must remain {existingExtension}.");
+            }
+
+            return suppliedName;
         }
 
         public PeerCertificationController(
@@ -1487,29 +1535,66 @@ namespace HIVTraining_Vue.Server.Controllers
                     query = query.Where(x =>
                         x.Peer.Approve != true &&
                         x.Peer.Disapprove != true &&
+                        x.Peer.Closed != true &&
+                        x.Peer.Lapsed != true &&
                         x.Peer.Active != false &&
-                        (x.Peer.Active != true || (x.Peer.ApplicationPercentage ?? 0) < 100));
+                        (
+                            x.Peer.Active != true ||
+                            (x.Peer.ApplicationPercentage ?? 0) < 100
+                        ));
                     break;
 
                 case "submitted":
                     query = query.Where(x =>
                         x.Peer.Approve != true &&
                         x.Peer.Disapprove != true &&
+                        x.Peer.Closed != true &&
+                        x.Peer.Lapsed != true &&
                         x.Peer.Active == true &&
                         (x.Peer.ApplicationPercentage ?? 0) == 100);
+                    break;
+
+                case "approved":
+                    query = query.Where(x =>
+                        x.Peer.Approve == true &&
+                        x.Peer.Disapprove != true &&
+                        x.Peer.Closed != true &&
+                        x.Peer.Lapsed != true &&
+                        x.Peer.Active == true);
+                    break;
+
+                case "disapproved":
+                    query = query.Where(x =>
+                        x.Peer.Disapprove == true &&
+                        x.Peer.Approve != true &&
+                        x.Peer.Closed != true &&
+                        x.Peer.Lapsed != true &&
+                        x.Peer.Active == true);
                     break;
 
                 case "archived":
                     query = query.Where(x =>
                         x.Peer.Approve != true &&
                         x.Peer.Disapprove != true &&
+                        x.Peer.Closed != true &&
+                        x.Peer.Lapsed != true &&
                         x.Peer.Active == false);
                     break;
 
-                case "approved":
+                case "closed":
                     query = query.Where(x =>
-                        x.Peer.Approve == true &&
-                        x.Peer.Active == true);
+                        x.Peer.Closed == true &&
+                        x.Peer.Approve != true &&
+                        x.Peer.Disapprove != true &&
+                        x.Peer.Lapsed != true);
+                    break;
+
+                case "lapsed":
+                    query = query.Where(x =>
+                        x.Peer.Lapsed == true &&
+                        x.Peer.Approve != true &&
+                        x.Peer.Disapprove != true &&
+                        x.Peer.Closed != true);
                     break;
 
                 case "all":
@@ -1551,6 +1636,8 @@ namespace HIVTraining_Vue.Server.Controllers
 
         approve = x.Peer.Approve,
         disapprove = x.Peer.Disapprove,
+        closed = x.Peer.Closed,
+        lapsed = x.Peer.Lapsed,
         active = x.Peer.Active,
         submittedOn = x.Peer.DateCreate,
         lastUpdated = x.Peer.DateModify,
@@ -1562,10 +1649,19 @@ namespace HIVTraining_Vue.Server.Controllers
         lastLoginDate = x.AspUser != null ? x.AspUser.LastLoginDate : null,
 
         applicationStatus =
+    x.Peer.Closed == true ? "Closed" :
+    x.Peer.Lapsed == true ? "Lapsed" :
     x.Peer.Approve == true ? "Approved" :
     x.Peer.Disapprove == true ? "Disapproved" :
-    x.Peer.Active == false ? "Archived" :
-    (x.Peer.Active == true && (x.Peer.ApplicationPercentage ?? 0) == 100) ? "Submitted" :
+    (
+        x.Peer.Active == false &&
+        x.Peer.Closed != true &&
+        x.Peer.Lapsed != true
+    ) ? "Archived" :
+    (
+        x.Peer.Active == true &&
+        (x.Peer.ApplicationPercentage ?? 0) == 100
+    ) ? "Submitted" :
     "In Progress"
     })
     .ToListAsync();
@@ -1605,6 +1701,8 @@ namespace HIVTraining_Vue.Server.Controllers
 
                 x.approve,
                 x.disapprove,
+                x.closed,
+                x.lapsed,
                 x.active,
                 x.submittedOn,
                 x.lastUpdated,
@@ -1672,7 +1770,8 @@ namespace HIVTraining_Vue.Server.Controllers
         {
             const int ceDocType = 9;
 
-            page = page < 1 ? 1 : page;
+            page = Math.Max(page, 1);
+
             pageSize = pageSize switch
             {
                 10 => 10,
@@ -1683,52 +1782,78 @@ namespace HIVTraining_Vue.Server.Controllers
             };
 
             var query =
-                from d in _context.PeerDocs.AsNoTracking()
-                join p in _context.PeerUsers.AsNoTracking()
-                    on d.PeerSysId equals p.PeerSysId
-                join u in _context.Users.AsNoTracking()
-                    on p.UserSysId equals u.UserSysId
-                where d.Active == true && d.PeerDocId == ceDocType
-                group d by new
+                from document in _context.PeerDocs.AsNoTracking()
+                join peer in _context.PeerUsers.AsNoTracking()
+                    on document.PeerSysId equals peer.PeerSysId
+                join user in _context.Users.AsNoTracking()
+                    on peer.UserSysId equals user.UserSysId
+                where document.Active == true
+                      && document.PeerDocId == ceDocType
+                group document by new
                 {
-                    p.PeerSysId,
-                    u.UserId,
-                    u.UserSysId,
-                    u.FirstName,
-                    u.LastName,
-                    u.Email
+                    peer.PeerSysId,
+                    user.UserId,
+                    user.UserSysId,
+                    user.FirstName,
+                    user.LastName,
+                    user.Email
                 }
-                into g
+                into documentGroup
                 select new
                 {
-                    peerSysId = g.Key.PeerSysId,
-                    userId = g.Key.UserId,
-                    userSysId = g.Key.UserSysId,
-                    firstName = g.Key.FirstName,
-                    lastName = g.Key.LastName,
-                    fullName = ((g.Key.FirstName ?? "") + " " + (g.Key.LastName ?? "")).Trim(),
-                    email = g.Key.Email,
-                    documentCount = g.Count(),
-                    totalCredits = g.Sum(x => x.NoOfCredits ?? 0),
-                    reviewedCount = g.Count(x => x.Reviewed == true),
-                    latestUploadDate = g.Max(x => x.DateUpload)
+                    peerSysId = documentGroup.Key.PeerSysId,
+                    userId = documentGroup.Key.UserId,
+                    userSysId = documentGroup.Key.UserSysId,
+                    firstName = documentGroup.Key.FirstName,
+                    lastName = documentGroup.Key.LastName,
+
+                    fullName =
+                        ((documentGroup.Key.FirstName ?? string.Empty) + " " +
+                         (documentGroup.Key.LastName ?? string.Empty)).Trim(),
+
+                    email = documentGroup.Key.Email,
+
+                    documentCount = documentGroup.Count(),
+
+                    totalCredits = documentGroup.Sum(
+                        document => document.NoOfCredits ?? 0),
+
+                    pendingCount = documentGroup.Count(document =>
+     document.ReviewStatus == (int)EduCreditReviewStatus.Pending &&
+     document.Reviewed == false),
+
+                    approvedCount = documentGroup.Count(document =>
+                        document.ReviewStatus == (int)EduCreditReviewStatus.Approved ||
+                        (
+                            document.ReviewStatus == (int)EduCreditReviewStatus.Pending &&
+                            document.Reviewed == true
+                        )),
+
+                    rejectedCount = documentGroup.Count(document =>
+                        document.ReviewStatus == (int)EduCreditReviewStatus.Rejected),
+
+                    latestUploadDate = documentGroup.Max(
+                        document => document.DateUpload)
                 };
 
             if (!string.IsNullOrWhiteSpace(search))
             {
                 var term = search.Trim().ToLower();
 
-                query = query.Where(x =>
-                    ((x.firstName ?? "").ToLower().Contains(term)) ||
-                    ((x.lastName ?? "").ToLower().Contains(term)) ||
-                    (((x.firstName ?? "") + " " + (x.lastName ?? "")).ToLower().Contains(term)) ||
-                    ((x.email ?? "").ToLower().Contains(term)));
+                query = query.Where(row =>
+                    (row.firstName ?? string.Empty).ToLower().Contains(term) ||
+                    (row.lastName ?? string.Empty).ToLower().Contains(term) ||
+                    (
+                        (row.firstName ?? string.Empty) + " " +
+                        (row.lastName ?? string.Empty)
+                    ).ToLower().Contains(term) ||
+                    (row.email ?? string.Empty).ToLower().Contains(term));
             }
 
             var totalRecords = await query.CountAsync();
 
             var items = await query
-                .OrderByDescending(x => x.latestUploadDate)
+                .OrderByDescending(row => row.latestUploadDate)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync();
@@ -1742,61 +1867,159 @@ namespace HIVTraining_Vue.Server.Controllers
             });
         }
         [HttpGet("admin/manage-edu-credits/{peerSysId:int}/documents")]
-        public async Task<IActionResult> GetEduCreditDocumentsByPeer(int peerSysId)
+        public async Task<ActionResult<List<EduCreditDocumentDto>>>
+    GetEduCreditDocumentsByPeer(int peerSysId)
         {
             const int ceDocType = 9;
 
             var documents = await _context.PeerDocs
                 .AsNoTracking()
-                .Where(d => d.PeerSysId == peerSysId && d.Active == true && d.PeerDocId == ceDocType)
-                .OrderByDescending(d => d.DateUpload)
-                .Select(d => new
+                .Where(document =>
+                    document.PeerSysId == peerSysId &&
+                    document.Active == true &&
+                    document.PeerDocId == ceDocType)
+                .OrderByDescending(document => document.DateUpload)
+                .Select(document => new
                 {
-                    peerDocSysId = d.PeerDocSysId,
-                    peerSysId = d.PeerSysId,
-                    fileName = d.DocPath != null
-                        ? (d.DocPath.Contains("/") ? d.DocPath.Substring(d.DocPath.LastIndexOf('/') + 1) : d.DocPath)
-                        : "",
-                    noOfCredits = d.NoOfCredits,
-                    dateUpload = d.DateUpload,
-                    reviewed = d.Reviewed
+                    document.PeerDocSysId,
+                    document.PeerSysId,
+                    document.DocPath,
+                    document.DisplayFileName,
+                    document.NoOfCredits,
+                    document.DateUpload,
+                    document.ReviewStatus,
+                    document.AdminComments
                 })
                 .ToListAsync();
 
-            return Ok(documents);
+            var result = documents.Select(document =>
+            {
+                var fallbackFileName =
+                    GetFileNameFromDocPath(document.DocPath);
+                var effectiveReviewStatus = document.ReviewStatus;
+
+                return new EduCreditDocumentDto
+                {
+                    PeerDocSysId = document.PeerDocSysId,
+                    PeerSysId = document.PeerSysId,
+
+                    FileName = string.IsNullOrWhiteSpace(document.DisplayFileName)
+                        ? fallbackFileName
+                        : document.DisplayFileName,
+
+                    NoOfCredits = document.NoOfCredits,
+                    DateUpload = document.DateUpload,
+
+                    ReviewStatus = effectiveReviewStatus,
+                    ReviewStatusText = GetReviewStatusText(effectiveReviewStatus),
+
+                    AdminComments = document.AdminComments
+                };
+            }).ToList();
+
+            return Ok(result);
         }
 
-        [HttpPut("admin/manage-edu-credits/{peerDocSysId:int}/review")]
-        public async Task<IActionResult> UpdateEduCreditReviewStatus(int peerDocSysId, [FromBody] JsonElement body)
+        [HttpPut("admin/manage-edu-credits/{peerDocSysId:int}")]
+        public async Task<IActionResult> UpdateEduCreditDocument(
+    int peerDocSysId,
+    [FromBody] UpdateEduCreditDocumentDto request)
         {
-            static bool? GetBool(JsonElement e, string name)
+            const int ceDocType = 9;
+
+            if (!ModelState.IsValid)
+                return ValidationProblem(ModelState);
+
+            if (!IsValidReviewStatus(request.ReviewStatus))
             {
-                if (!e.TryGetProperty(name, out var p)) return null;
-                if (p.ValueKind == JsonValueKind.Null) return null;
-                if (p.ValueKind == JsonValueKind.True) return true;
-                if (p.ValueKind == JsonValueKind.False) return false;
-                if (p.ValueKind == JsonValueKind.String && bool.TryParse(p.GetString(), out var b)) return b;
-                return null;
+                return BadRequest(new
+                {
+                    message = "Review status must be Pending, Approved, or Rejected."
+                });
             }
 
-            var reviewed = GetBool(body, "reviewed");
-            if (!reviewed.HasValue)
-                return BadRequest(new { message = "Reviewed value is required." });
+            if (request.NoOfCredits.HasValue &&
+                request.NoOfCredits.Value < 0)
+            {
+                return BadRequest(new
+                {
+                    message = "The number of credits cannot be negative."
+                });
+            }
 
-            var doc = await _context.PeerDocs.FirstOrDefaultAsync(d => d.PeerDocSysId == peerDocSysId && d.Active == true);
-            if (doc == null)
-                return NotFound(new { message = "Document not found." });
+            if (request.ReviewStatus ==
+                    (int)EduCreditReviewStatus.Rejected &&
+                string.IsNullOrWhiteSpace(request.AdminComments))
+            {
+                return BadRequest(new
+                {
+                    message = "Admin comments are required when rejecting a document."
+                });
+            }
 
-            doc.Reviewed = reviewed.Value;
-            doc.DateModify = DateTime.UtcNow;
+            var document = await _context.PeerDocs
+                .FirstOrDefaultAsync(document =>
+                    document.PeerDocSysId == peerDocSysId &&
+                    document.PeerDocId == ceDocType &&
+                    document.Active == true);
+
+            if (document == null)
+            {
+                return NotFound(new
+                {
+                    message = "Continuing education document was not found."
+                });
+            }
+
+            string displayFileName;
+
+            try
+            {
+                displayFileName = BuildDisplayFileName(
+                    request.FileName,
+                    document.DocPath);
+            }
+            catch (ArgumentException exception)
+            {
+                return BadRequest(new
+                {
+                    message = exception.Message
+                });
+            }
+
+            document.DisplayFileName = displayFileName;
+            document.NoOfCredits = request.NoOfCredits;
+            document.ReviewStatus = request.ReviewStatus;
+
+            document.AdminComments =
+                string.IsNullOrWhiteSpace(request.AdminComments)
+                    ? null
+                    : request.AdminComments.Trim();
+
+            document.DateModify = DateTime.UtcNow;
+
+            // Maintain legacy Reviewed until the old field is removed.
+            document.Reviewed =
+                request.ReviewStatus ==
+                (int)EduCreditReviewStatus.Approved;
 
             await _context.SaveChangesAsync();
 
             return Ok(new
             {
-                message = "Review status updated successfully.",
-                peerDocSysId = doc.PeerDocSysId,
-                reviewed = doc.Reviewed
+                message = "Educational credit document updated successfully.",
+                document = new EduCreditDocumentDto
+                {
+                    PeerDocSysId = document.PeerDocSysId,
+                    PeerSysId = document.PeerSysId,
+                    FileName = document.DisplayFileName,
+                    NoOfCredits = document.NoOfCredits,
+                    DateUpload = document.DateUpload,
+                    ReviewStatus = document.ReviewStatus,
+                    ReviewStatusText =
+                        GetReviewStatusText(document.ReviewStatus),
+                    AdminComments = document.AdminComments
+                }
             });
         }
         [HttpPost("continuing-education/upload/{userId:guid}")]
@@ -1856,11 +2079,18 @@ namespace HIVTraining_Vue.Server.Controllers
                 PeerSysId = peer.PeerSysId,
                 PeerDocId = ceDocType,
                 DocType = ceDocType,
+
                 DocPath = blobName,
+                DisplayFileName = originalSafe,
+
                 DateUpload = DateTime.UtcNow,
                 Active = true,
                 UploadBy = user.Email ?? user.UserSysId.ToString(),
+
                 Reviewed = false,
+                ReviewStatus = (int)EduCreditReviewStatus.Pending,
+                AdminComments = null,
+
                 NoOfCredits = noOfCredits
             };
 
@@ -1918,25 +2148,53 @@ namespace HIVTraining_Vue.Server.Controllers
 
             var approvedPeerIds = approvedPeers.Select(p => p.PeerSysId).ToList();
 
-            var documents = await _context.PeerDocs
-                .AsNoTracking()
-                .Where(d =>
-                    approvedPeerIds.Contains(d.PeerSysId) &&
-                    d.Active == true &&
-                    d.PeerDocId == 9)
-                .OrderByDescending(d => d.DateUpload)
-                .Select(d => new
+            var documentRows = await _context.PeerDocs
+    .AsNoTracking()
+    .Where(document =>
+        approvedPeerIds.Contains(document.PeerSysId) &&
+        document.Active == true &&
+        document.PeerDocId == 9)
+    .OrderByDescending(document => document.DateUpload)
+    .Select(document => new
+    {
+        document.PeerDocSysId,
+        document.PeerDocId,
+        document.DocPath,
+        document.DisplayFileName,
+        document.NoOfCredits,
+        document.DateUpload,
+        document.ReviewStatus,
+        document.Reviewed,
+        document.AdminComments
+    })
+    .ToListAsync();
+
+            var documents = documentRows.Select(document =>
+            {
+                var effectiveReviewStatus =
+                    document.ReviewStatus == (int)EduCreditReviewStatus.Pending &&
+                    document.Reviewed
+                        ? (int)EduCreditReviewStatus.Approved
+                        : document.ReviewStatus;
+
+                return new
                 {
-                    peerDocSysId = d.PeerDocSysId,
-                    peerDocId = d.PeerDocId,
-                    fileName = d.DocPath != null
-        ? (d.DocPath.Contains("/") ? d.DocPath.Substring(d.DocPath.LastIndexOf('/') + 1) : d.DocPath)
-        : "",
-                    noOfCredits = d.NoOfCredits,
-                    dateUpload = d.DateUpload,
-                    reviewed = d.Reviewed
-                })
-                .ToListAsync();
+                    peerDocSysId = document.PeerDocSysId,
+                    peerDocId = document.PeerDocId,
+
+                    fileName = string.IsNullOrWhiteSpace(document.DisplayFileName)
+                        ? GetFileNameFromDocPath(document.DocPath)
+                        : document.DisplayFileName,
+
+                    noOfCredits = document.NoOfCredits,
+                    dateUpload = document.DateUpload,
+
+                    reviewStatus = effectiveReviewStatus,
+                    reviewStatusText = GetReviewStatusText(effectiveReviewStatus),
+
+                    adminComments = document.AdminComments
+                };
+            }).ToList();
 
             return Ok(new
             {
@@ -2089,6 +2347,8 @@ namespace HIVTraining_Vue.Server.Controllers
                 approve = peer.Approve,
                 disapprove = peer.Disapprove,
                 active = peer.Active,
+                closed = peer.Closed,
+                lapsed = peer.Lapsed,
                 approvedDt = peer.ApprovedDt,
                 disapprovedDt = peer.DisapprovedDt,
 
@@ -2182,9 +2442,23 @@ namespace HIVTraining_Vue.Server.Controllers
             }
 
             if (HasProp(body, "ApplicantNumber")) peer.ApplicantNumber = GetInt(body, "ApplicantNumber");
-            if (HasProp(body, "Approve")) peer.Approve = GetBool(body, "Approve");
-            if (HasProp(body, "Disapprove")) peer.Disapprove = GetBool(body, "Disapprove");
-            if (HasProp(body, "Active")) peer.Active = GetBool(body, "Active");
+            if (HasProp(body, "Approve"))
+                peer.Approve = GetBool(body, "Approve");
+
+            if (HasProp(body, "Disapprove"))
+                peer.Disapprove = GetBool(body, "Disapprove");
+
+            if (HasProp(body, "Closed"))
+                peer.Closed = GetBool(body, "Closed");
+
+            if (HasProp(body, "Lapsed"))
+                peer.Lapsed = GetBool(body, "Lapsed");
+
+            if (HasProp(body, "Active"))
+                peer.Active = GetBool(body, "Active");
+
+            if (HasProp(body, "ApplicationPercentage"))
+                peer.ApplicationPercentage = GetInt(body, "ApplicationPercentage");
             if (HasProp(body, "ReasonDisapprv")) peer.ReasonDisapprv = GetString(body, "ReasonDisapprv");
             if (HasProp(body, "Notes")) peer.Notes = GetString(body, "Notes");
 
@@ -2219,31 +2493,86 @@ namespace HIVTraining_Vue.Server.Controllers
             if (HasProp(body, "PracticumEDate")) peer.PracticumEdate = GetDate(body, "PracticumEDate");
             peer.DateModify = DateTime.UtcNow;
 
-            // Archived means approve/disapprove cleared and active = false
-            if (peer.Active == false)
+            var statusChangeDate = DateTime.UtcNow;
+
+            // Closed
+            if (peer.Closed == true)
             {
                 peer.Approve = null;
                 peer.Disapprove = null;
+                peer.Lapsed = null;
+                peer.Active = null;
+
                 peer.ApprovedDt = null;
                 peer.DisapprovedDt = null;
+                peer.ReasonDisapprv = null;
+            }
+
+            // Lapsed
+            else if (peer.Lapsed == true)
+            {
+                peer.Approve = null;
+                peer.Disapprove = null;
+                peer.Closed = null;
+                peer.Active = null;
+
+                peer.ApprovedDt = null;
+                peer.DisapprovedDt = null;
+                peer.ReasonDisapprv = null;
+            }
+
+            // Archived
+            else if (peer.Active == false)
+            {
+                peer.Approve = null;
+                peer.Disapprove = null;
+                peer.Closed = null;
+                peer.Lapsed = null;
+
+                peer.ApprovedDt = null;
+                peer.DisapprovedDt = null;
+                peer.ReasonDisapprv = null;
             }
 
             // Approved
             else if (peer.Approve == true)
             {
                 peer.Active = true;
-                peer.ApprovedDt = DateTime.UtcNow;
                 peer.Disapprove = null;
+                peer.Closed = null;
+                peer.Lapsed = null;
+
+                peer.ApprovedDt = statusChangeDate;
                 peer.DisapprovedDt = null;
+                peer.ReasonDisapprv = null;
             }
 
             // Disapproved
             else if (peer.Disapprove == true)
             {
                 peer.Active = true;
-                peer.DisapprovedDt = DateTime.UtcNow;
                 peer.Approve = null;
+                peer.Closed = null;
+                peer.Lapsed = null;
+
+                peer.DisapprovedDt = statusChangeDate;
                 peer.ApprovedDt = null;
+            }
+
+            // Submitted
+            else if (
+                peer.Active == true &&
+                peer.ApplicationPercentage == 100
+            )
+            {
+                peer.Approve = null;
+                peer.Disapprove = null;
+                peer.Closed = null;
+                peer.Lapsed = null;
+
+                peer.ApprovedDt = null;
+                peer.DisapprovedDt = null;
+                peer.ReasonDisapprv = null;
             }
 
             await _context.SaveChangesAsync();
@@ -2271,9 +2600,9 @@ namespace HIVTraining_Vue.Server.Controllers
             if (!await blob.ExistsAsync())
                 return NotFound(new { message = "File missing in blob storage." });
 
-            var fileName = blobName.Contains("/")
-                ? blobName.Split('/').Last()
-                : Path.GetFileName(blobName);
+            var fileName = !string.IsNullOrWhiteSpace(doc.DisplayFileName)
+    ? doc.DisplayFileName
+    : GetFileNameFromDocPath(blobName);
 
             var contentType = GuessContentType(fileName);
 
@@ -2637,12 +2966,20 @@ namespace HIVTraining_Vue.Server.Controllers
             {
                 PeerSysId = peer.PeerSysId,
                 PeerDocId = docType,
-                DocType = docType,      // keep for backward compatibility
-                DocPath = blobName,     // ✅ now a blob path, not disk path
+                DocType = docType,
+
+                DocPath = blobName,
+                DisplayFileName = originalSafe,
+
                 DateUpload = DateTime.UtcNow,
                 Active = true,
                 UploadBy = user.Email ?? user.UserSysId.ToString(),
-                Reviewed = false
+
+                Reviewed = false,
+                ReviewStatus = (int)EduCreditReviewStatus.Pending,
+                AdminComments = null,
+
+                NoOfCredits = null
             };
 
             _context.PeerDocs.Add(doc);
