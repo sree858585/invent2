@@ -47,8 +47,18 @@
                         <strong>{{ currentPage }} / {{ totalPages }}</strong>
                     </div>
                     <div class="stat-box">
-                        <span>Reviewed On Page</span>
-                        <strong>{{ reviewedCount }}</strong>
+                        <span>Approved On Page</span>
+                        <strong>{{ approvedCount }}</strong>
+                    </div>
+
+                    <div class="stat-box">
+                        <span>Pending On Page</span>
+                        <strong>{{ pendingCount }}</strong>
+                    </div>
+
+                    <div class="stat-box">
+                        <span>Rejected On Page</span>
+                        <strong>{{ rejectedCount }}</strong>
                     </div>
                 </div>
             </div>
@@ -80,7 +90,7 @@
                                 <th>Email</th>
                                 <th>No. of Documents</th>
                                 <th>Total Credits</th>
-                                <th>Reviewed</th>
+                                <th>Status Summary</th>
                                 <th>Latest Upload</th>
                                 <th>Action</th>
                             </tr>
@@ -100,7 +110,21 @@
                                 <td>{{ row.email || "—" }}</td>
                                 <td>{{ row.documentCount }}</td>
                                 <td>{{ row.totalCredits ?? "—" }}</td>
-                                <td>{{ row.reviewedCount }} / {{ row.documentCount }}</td>
+                                <td>
+                                    <div class="status-summary">
+                                        <span class="summary-approved">
+                                            {{ row.approvedCount }} Approved
+                                        </span>
+
+                                        <span class="summary-pending">
+                                            {{ row.pendingCount }} Pending
+                                        </span>
+
+                                        <span class="summary-rejected">
+                                            {{ row.rejectedCount }} Rejected
+                                        </span>
+                                    </div>
+                                </td>
                                 <td>{{ formatDate(row.latestUploadDate) }}</td>
 
                                 <td>
@@ -164,34 +188,112 @@
             </div>
 
             <div v-else class="table-wrap">
-                <table class="credit-table">
+                <table class="credit-table document-edit-table">
                     <thead>
                         <tr>
-                            <th>File Name</th>
+                            <th>Document Name</th>
                             <th>No. of Credits</th>
                             <th>Uploaded Date</th>
-                            <th>View</th>
-                            <th>Reviewed</th>
+                            <th>Status</th>
+                            <th>Admin Comments</th>
+                            <th>Document</th>
+                            <th>Action</th>
                         </tr>
                     </thead>
 
                     <tbody>
-                        <tr v-for="doc in selectedDocuments" :key="doc.peerDocSysId">
-                            <td>{{ doc.fileName || "Document" }}</td>
-                            <td>{{ doc.noOfCredits ?? "—" }}</td>
-                            <td>{{ formatDate(doc.dateUpload) }}</td>
+                        <tr v-for="doc in selectedDocuments"
+                            :key="doc.peerDocSysId">
+
                             <td>
-                                <button class="btn btn-secondary btn-sm" @click="viewDocument(doc.peerDocSysId)">
+                                <input v-model.trim="doc.editFileName"
+                                       class="table-input file-name-input"
+                                       type="text"
+                                       maxlength="255"
+                                       :disabled="doc.saving" />
+                            </td>
+
+                            <td>
+                                <input v-model.number="doc.editNoOfCredits"
+                                       class="table-input credits-input"
+                                       type="number"
+                                       min="0"
+                                       max="1000"
+                                       step="0.25"
+                                       :disabled="doc.saving" />
+                            </td>
+
+                            <td>
+                                {{ formatDate(doc.dateUpload) }}
+                            </td>
+
+                            <td>
+                                <select v-model.number="doc.editReviewStatus"
+                                        class="table-select status-select"
+                                        :disabled="doc.saving">
+
+                                    <option v-for="status in reviewStatusOptions"
+                                            :key="status.value"
+                                            :value="status.value">
+                                        {{ status.label }}
+                                    </option>
+                                </select>
+                            </td>
+
+                            <td>
+                                <textarea v-model.trim="doc.editAdminComments"
+                                          class="table-textarea"
+                                          maxlength="2000"
+                                          rows="3"
+                                          :placeholder="
+                            doc.editReviewStatus === 2
+                                ? 'Enter the rejection reason'
+                                : 'Optional comments for the user'
+                        "
+                                          :disabled="doc.saving">
+                    </textarea>
+
+                                <div v-if="
+                            doc.editReviewStatus === 2 &&
+                            !doc.editAdminComments
+                        "
+                                     class="field-hint error-text">
+                                    A rejection reason is required.
+                                </div>
+                            </td>
+
+                            <td>
+                                <button class="btn btn-secondary btn-sm"
+                                        type="button"
+                                        @click="viewDocument(doc.peerDocSysId)">
                                     View
                                 </button>
                             </td>
+
                             <td>
-                                <label class="switch">
-                                    <input type="checkbox"
-                                           :checked="doc.reviewed"
-                                           @change="toggleReviewed(doc)" />
-                                    <span class="slider"></span>
-                                </label>
+                                <div class="document-actions">
+                                    <button class="btn btn-primary btn-sm"
+                                            type="button"
+                                            :disabled="
+                                doc.saving ||
+                                !isDocumentValid(doc) ||
+                                !hasDocumentChanges(doc)
+                            "
+                                            @click="saveDocument(doc)">
+
+                                        {{ doc.saving ? "Saving..." : "Save" }}
+                                    </button>
+
+                                    <button class="btn btn-secondary btn-sm"
+                                            type="button"
+                                            :disabled="
+                                doc.saving ||
+                                !hasDocumentChanges(doc)
+                            "
+                                            @click="resetDocument(doc)">
+                                        Reset
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     </tbody>
@@ -201,69 +303,117 @@
     </div>
 </template>
 
-<script>
-    import apiClient from "@/axios.js";
+<script>import apiClient from "@/axios.js";
+
     let searchDebounceTimer = null;
 
     export default {
         name: "ManageEduCredits",
+
         data() {
             return {
                 loading: false,
                 errorMessage: "",
+
                 credits: [],
                 searchText: "",
+
                 currentPage: 1,
                 pageSize: 10,
                 totalRecords: 0,
-    selectedUser: null,
-showDocumentsModal: false,
-documentsLoading: false,
-selectedDocuments: []
+
+                selectedUser: null,
+                showDocumentsModal: false,
+                documentsLoading: false,
+                selectedDocuments: [],
+
+                reviewStatusOptions: [
+                    { value: 0, label: "Pending" },
+                    { value: 1, label: "Approved" },
+                    { value: 2, label: "Rejected" }
+                ]
             };
         },
 
         computed: {
             totalPages() {
-                return Math.max(1, Math.ceil(this.totalRecords / this.pageSize));
+                return Math.max(
+                    1,
+                    Math.ceil(this.totalRecords / this.pageSize)
+                );
             },
 
             startRecord() {
                 if (this.totalRecords === 0) return 0;
-                return (this.currentPage - 1) * this.pageSize + 1;
+
+                return (
+                    (this.currentPage - 1) * this.pageSize + 1
+                );
             },
 
             endRecord() {
                 if (this.totalRecords === 0) return 0;
-                return Math.min(this.currentPage * this.pageSize, this.totalRecords);
+
+                return Math.min(
+                    this.currentPage * this.pageSize,
+                    this.totalRecords
+                );
             },
 
-            reviewedCount() {
-    return this.credits.reduce((total, x) => total + (x.reviewedCount || 0), 0);
-},
+            approvedCount() {
+                return this.credits.reduce(
+                    (total, row) =>
+                        total + Number(row.approvedCount || 0),
+                    0
+                );
+            },
+
+            pendingCount() {
+                return this.credits.reduce(
+                    (total, row) =>
+                        total + Number(row.pendingCount || 0),
+                    0
+                );
+            },
+
+            rejectedCount() {
+                return this.credits.reduce(
+                    (total, row) =>
+                        total + Number(row.rejectedCount || 0),
+                    0
+                );
+            },
 
             visiblePages() {
                 const total = this.totalPages;
                 const current = this.currentPage;
 
                 if (total <= 7) {
-                    return Array.from({ length: total }, (_, i) => i + 1);
+                    return Array.from(
+                        { length: total },
+                        (_, index) => index + 1
+                    );
                 }
 
                 const pages = [1];
 
-                if (current > 3) pages.push("...");
+                if (current > 3) {
+                    pages.push("...");
+                }
 
                 const start = Math.max(2, current - 1);
                 const end = Math.min(total - 1, current + 1);
 
-                for (let i = start; i <= end; i++) {
-                    pages.push(i);
+                for (let page = start; page <= end; page++) {
+                    pages.push(page);
                 }
 
-                if (current < total - 2) pages.push("...");
+                if (current < total - 2) {
+                    pages.push("...");
+                }
 
                 pages.push(total);
+
                 return pages;
             }
         },
@@ -272,114 +422,301 @@ selectedDocuments: []
             this.fetchCredits();
         },
 
+        beforeUnmount() {
+            clearTimeout(searchDebounceTimer);
+        },
+
         methods: {
             unwrapList(data) {
-                if (Array.isArray(data)) return data;
-                if (data && Array.isArray(data.$values)) return data.$values;
+                if (Array.isArray(data)) {
+                    return data;
+                }
+
+                if (data && Array.isArray(data.$values)) {
+                    return data.$values;
+                }
+
                 return [];
             },
-    async openDocumentsModal(row) {
-    this.selectedUser = row;
-    this.showDocumentsModal = true;
-    this.selectedDocuments = [];
-    this.documentsLoading = true;
 
-    try {
-        const res = await apiClient.get(
-            `/PeerCertification/admin/manage-edu-credits/${row.peerSysId}/documents`
-        );
+            getErrorMessage(error, fallbackMessage) {
+                return (
+                    error?.response?.data?.message ||
+                    error?.response?.data?.title ||
+                    error?.response?.data ||
+                    error?.message ||
+                    fallbackMessage
+                );
+            },
 
-        this.selectedDocuments = this.unwrapList(res.data);
-    } catch (err) {
-        alert("Unable to load documents.");
-    } finally {
-        this.documentsLoading = false;
-    }
-},
+            prepareDocument(document) {
+                return {
+                    ...document,
 
-closeDocumentsModal() {
-    this.showDocumentsModal = false;
-    this.selectedUser = null;
-    this.selectedDocuments = [];
-},
-            openPeerDetail(row) {
-                this.$router.push(`/peer-management/manage-peer/${row.userId}`);
+                    editFileName:
+                        document.fileName || "Document",
+
+                    editNoOfCredits:
+                        document.noOfCredits ?? null,
+
+                    editReviewStatus:
+                        Number(document.reviewStatus ?? 0),
+
+                    editAdminComments:
+                        document.adminComments || "",
+
+                    originalFileName:
+                        document.fileName || "Document",
+
+                    originalNoOfCredits:
+                        document.noOfCredits ?? null,
+
+                    originalReviewStatus:
+                        Number(document.reviewStatus ?? 0),
+
+                    originalAdminComments:
+                        document.adminComments || "",
+
+                    saving: false
+                };
+            },
+
+            async openDocumentsModal(row) {
+                this.selectedUser = row;
+                this.showDocumentsModal = true;
+                this.selectedDocuments = [];
+                this.documentsLoading = true;
+
+                try {
+                    await this.loadSelectedDocuments();
+                } catch (error) {
+                    alert(
+                        this.getErrorMessage(
+                            error,
+                            "Unable to load documents."
+                        )
+                    );
+                } finally {
+                    this.documentsLoading = false;
+                }
+            },
+
+            async loadSelectedDocuments() {
+                if (!this.selectedUser?.peerSysId) {
+                    return;
+                }
+
+                const response = await apiClient.get(
+                    `/PeerCertification/admin/manage-edu-credits/` +
+                    `${this.selectedUser.peerSysId}/documents`
+                );
+
+                this.selectedDocuments = this
+                    .unwrapList(response.data)
+                    .map(this.prepareDocument);
+            },
+
+            closeDocumentsModal() {
+                this.showDocumentsModal = false;
+                this.selectedUser = null;
+                this.selectedDocuments = [];
             },
 
             async fetchCredits() {
-    this.loading = true;
-    this.errorMessage = "";
+                this.loading = true;
+                this.errorMessage = "";
 
-    try {
-        const params = new URLSearchParams({
-            page: this.currentPage,
-            pageSize: this.pageSize
-        });
+                try {
+                    const params = new URLSearchParams({
+                        page: String(this.currentPage),
+                        pageSize: String(this.pageSize)
+                    });
 
-        if (this.searchText && this.searchText.trim()) {
-            params.append("search", this.searchText.trim());
-        }
+                    const search = this.searchText?.trim();
 
-        const response = await apiClient.get(
-            `/PeerCertification/admin/manage-edu-credits?${params.toString()}`
-        );
+                    if (search) {
+                        params.append("search", search);
+                    }
 
-        const data = response.data;
+                    const response = await apiClient.get(
+                        `/PeerCertification/admin/manage-edu-credits?` +
+                        params.toString()
+                    );
 
-        this.credits = this.unwrapList(data.items);
-        this.totalRecords = data.totalRecords || 0;
-        this.currentPage = data.page || 1;
-        this.pageSize = data.pageSize || 10;
-    } catch (error) {
-        this.errorMessage =
-            error?.response?.data?.message ||
-            error?.response?.data ||
-            error?.message ||
-            "Unable to load educational credit records.";
+                    const data = response.data;
 
-        this.credits = [];
-        this.totalRecords = 0;
-    } finally {
-        this.loading = false;
-    }
-},
+                    this.credits = this.unwrapList(data.items);
+                    this.totalRecords = Number(data.totalRecords || 0);
+                    this.currentPage = Number(data.page || 1);
+                    this.pageSize = Number(data.pageSize || 10);
+                } catch (error) {
+                    this.errorMessage = this.getErrorMessage(
+                        error,
+                        "Unable to load educational credit records."
+                    );
 
-            async toggleReviewed(row) {
-    const newValue = !row.reviewed;
-    const oldValue = row.reviewed;
-    row.reviewed = newValue;
+                    this.credits = [];
+                    this.totalRecords = 0;
+                } finally {
+                    this.loading = false;
+                }
+            },
 
-    try {
-        await apiClient.put(
-            `/PeerCertification/admin/manage-edu-credits/${row.peerDocSysId}/review`,
-            { reviewed: newValue }
-        );
+            isDocumentValid(document) {
+                const fileName =
+                    document.editFileName?.trim();
 
-        // refresh main user summary count also
-        await this.fetchCredits();
+                if (!fileName) {
+                    return false;
+                }
 
-        // keep modal open and reload documents for selected user
-        if (this.selectedUser?.peerSysId) {
-            const res = await apiClient.get(
-                `/PeerCertification/admin/manage-edu-credits/${this.selectedUser.peerSysId}/documents`
-            );
-            this.selectedDocuments = this.unwrapList(res.data);
-        }
-    } catch (error) {
-        row.reviewed = oldValue;
+                if (
+                    document.editNoOfCredits !== null &&
+                    document.editNoOfCredits !== "" &&
+                    Number(document.editNoOfCredits) < 0
+                ) {
+                    return false;
+                }
 
-        alert(
-            error?.response?.data?.message ||
-            error?.response?.data ||
-            error?.message ||
-            "Unable to update review status."
-        );
-    }
-},
+                if (
+                    document.editReviewStatus === 2 &&
+                    !document.editAdminComments?.trim()
+                ) {
+                    return false;
+                }
+
+                return [0, 1, 2].includes(
+                    Number(document.editReviewStatus)
+                );
+            },
+
+            hasDocumentChanges(document) {
+                return (
+                    document.editFileName?.trim() !==
+                    document.originalFileName?.trim() ||
+
+                    this.normalizeCredits(
+                        document.editNoOfCredits
+                    ) !==
+                    this.normalizeCredits(
+                        document.originalNoOfCredits
+                    ) ||
+
+                    Number(document.editReviewStatus) !==
+                    Number(document.originalReviewStatus) ||
+
+                    (document.editAdminComments || "").trim() !==
+                    (document.originalAdminComments || "").trim()
+                );
+            },
+
+            normalizeCredits(value) {
+                if (
+                    value === null ||
+                    value === undefined ||
+                    value === ""
+                ) {
+                    return null;
+                }
+
+                return Number(value);
+            },
+
+            async saveDocument(document) {
+                if (!this.isDocumentValid(document)) {
+                    alert(
+                        "Please enter valid document information. " +
+                        "A rejection reason is required for rejected documents."
+                    );
+                    return;
+                }
+
+                document.saving = true;
+
+                const payload = {
+                    fileName: document.editFileName.trim(),
+
+                    noOfCredits: this.normalizeCredits(
+                        document.editNoOfCredits
+                    ),
+
+                    reviewStatus: Number(
+                        document.editReviewStatus
+                    ),
+
+                    adminComments:
+                        document.editAdminComments?.trim() || null
+                };
+
+                try {
+                    const response = await apiClient.put(
+                        `/PeerCertification/admin/manage-edu-credits/` +
+                        `${document.peerDocSysId}`,
+                        payload
+                    );
+
+                    const updatedDocument =
+                        response.data?.document;
+
+                    if (updatedDocument) {
+                        const index =
+                            this.selectedDocuments.findIndex(
+                                item =>
+                                    item.peerDocSysId ===
+                                    document.peerDocSysId
+                            );
+
+                        if (index >= 0) {
+                            this.selectedDocuments[index] =
+                                this.prepareDocument(
+                                    updatedDocument
+                                );
+                        }
+                    } else {
+                        await this.loadSelectedDocuments();
+                    }
+
+                    await this.fetchCredits();
+                } catch (error) {
+                    alert(
+                        this.getErrorMessage(
+                            error,
+                            "Unable to update the document."
+                        )
+                    );
+                } finally {
+                    const currentDocument =
+                        this.selectedDocuments.find(
+                            item =>
+                                item.peerDocSysId ===
+                                document.peerDocSysId
+                        );
+
+                    if (currentDocument) {
+                        currentDocument.saving = false;
+                    }
+                }
+            },
+
+            resetDocument(document) {
+                document.editFileName =
+                    document.originalFileName;
+
+                document.editNoOfCredits =
+                    document.originalNoOfCredits;
+
+                document.editReviewStatus =
+                    document.originalReviewStatus;
+
+                document.editAdminComments =
+                    document.originalAdminComments;
+            },
 
             handleSearchInput() {
                 this.currentPage = 1;
+
                 clearTimeout(searchDebounceTimer);
+
                 searchDebounceTimer = setTimeout(() => {
                     this.fetchCredits();
                 }, 400);
@@ -391,27 +728,62 @@ closeDocumentsModal() {
             },
 
             goToPage(page) {
-                if (page < 1 || page > this.totalPages || page === this.currentPage) return;
+                if (
+                    typeof page !== "number" ||
+                    page < 1 ||
+                    page > this.totalPages ||
+                    page === this.currentPage
+                ) {
+                    return;
+                }
+
                 this.currentPage = page;
                 this.fetchCredits();
             },
 
             viewDocument(peerDocSysId) {
-                window.open(`/api/PeerCertification/uploads/preview/${peerDocSysId}`, "_blank");
+                window.open(
+                    `/api/PeerCertification/uploads/preview/` +
+                    peerDocSysId,
+                    "_blank",
+                    "noopener,noreferrer"
+                );
             },
 
             formatDate(value) {
-                if (!value) return "—";
-                const d = new Date(value);
-                if (Number.isNaN(d.getTime())) return "—";
-                return d.toLocaleDateString();
+                if (!value) {
+                    return "—";
+                }
+
+                const date = new Date(value);
+
+                if (Number.isNaN(date.getTime())) {
+                    return "—";
+                }
+
+                return date.toLocaleDateString();
             },
 
             getInitials(name) {
-                if (!name) return "U";
-                const parts = name.trim().split(/\s+/).filter(Boolean);
-                if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-                return `${parts[0].charAt(0)}${parts[1].charAt(0)}`.toUpperCase();
+                if (!name) {
+                    return "U";
+                }
+
+                const parts = name
+                    .trim()
+                    .split(/\s+/)
+                    .filter(Boolean);
+
+                if (parts.length === 1) {
+                    return parts[0]
+                        .charAt(0)
+                        .toUpperCase();
+                }
+
+                return (
+                    parts[0].charAt(0) +
+                    parts[1].charAt(0)
+                ).toUpperCase();
             }
         }
     };</script>
@@ -918,5 +1290,102 @@ closeDocumentsModal() {
         border-radius: 999px;
         cursor: pointer;
         font-weight: 900;
+    }
+    .btn-primary {
+        background: #43285d;
+        color: #ffffff;
+        border: 1px solid #43285d;
+    }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #51316f;
+        }
+
+    .btn:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+    }
+
+    .document-edit-table {
+        min-width: 1450px;
+    }
+
+    .table-input,
+    .table-select,
+    .table-textarea {
+        width: 100%;
+        border: 1px solid #d1d5db;
+        border-radius: 10px;
+        background: #ffffff;
+        color: #111827;
+        font-size: 14px;
+        outline: none;
+    }
+
+    .table-input,
+    .table-select {
+        min-height: 42px;
+        padding: 8px 10px;
+    }
+
+    .table-textarea {
+        min-width: 250px;
+        padding: 10px;
+        resize: vertical;
+        font-family: inherit;
+    }
+
+        .table-input:focus,
+        .table-select:focus,
+        .table-textarea:focus {
+            border-color: #7c3aed;
+            box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.08);
+        }
+
+    .file-name-input {
+        min-width: 260px;
+    }
+
+    .credits-input {
+        width: 110px;
+    }
+
+    .status-select {
+        min-width: 130px;
+    }
+
+    .document-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .field-hint {
+        margin-top: 6px;
+        font-size: 12px;
+    }
+
+    .error-text {
+        color: #b91c1c;
+    }
+
+    .status-summary {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    .summary-approved {
+        color: #166534;
+    }
+
+    .summary-pending {
+        color: #92400e;
+    }
+
+    .summary-rejected {
+        color: #991b1b;
     }
 </style>

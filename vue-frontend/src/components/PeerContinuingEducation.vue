@@ -172,9 +172,17 @@
                                     <td>{{ doc.noOfCredits ?? "—" }}</td>
                                     <td>{{ formatDate(doc.dateUpload) }}</td>
                                     <td>
-                                        <span class="review-status" :class="doc.reviewed ? 'reviewed' : 'pending'">
-                                            {{ doc.reviewed ? "Reviewed" : "Pending Review" }}
-                                        </span>
+                                        <div class="status-cell">
+                                            <span class="review-status"
+                                                  :class="getReviewStatusClass(doc.reviewStatus)">
+                                                {{ getReviewStatusText(doc) }}
+                                            </span>
+
+                                            <div v-if="doc.reviewStatus === 2 && doc.adminComments"
+                                                 class="admin-comment">
+                                                {{ doc.adminComments }}
+                                            </div>
+                                        </div>
                                     </td>
                                     <td>
                                         <div class="row-actions">
@@ -219,6 +227,31 @@
             getUserGuid() {
                 return localStorage.getItem("userId");
             },
+            getReviewStatusText(doc) {
+    if (doc?.reviewStatusText) {
+        return doc.reviewStatusText;
+    }
+
+    switch (Number(doc?.reviewStatus)) {
+        case 1:
+            return "Approved";
+        case 2:
+            return "Rejected";
+        default:
+            return "Pending Review";
+    }
+},
+
+getReviewStatusClass(reviewStatus) {
+    switch (Number(reviewStatus)) {
+        case 1:
+            return "approved";
+        case 2:
+            return "rejected";
+        default:
+            return "pending";
+    }
+},
             goBackToPeerCertification() {
     this.$router.push("/peer-certification");
 },
@@ -854,13 +887,57 @@ async loadPage() {
         white-space: nowrap;
     }
 
-        .review-status.reviewed {
-            background: rgba(6, 95, 70, 0.10);
-            color: #065f46;
-        }
 
         .review-status.pending {
             background: rgba(245, 158, 11, 0.16);
             color: #92400e;
         }
+    .status-cell {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .review-status {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 30px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 900;
+        white-space: nowrap;
+    }
+
+        .review-status.approved {
+            background: rgba(6, 95, 70, 0.10);
+            color: #065f46;
+            border: 1px solid rgba(6, 95, 70, 0.15);
+        }
+
+        .review-status.pending {
+            background: rgba(245, 158, 11, 0.16);
+            color: #92400e;
+            border: 1px solid rgba(245, 158, 11, 0.22);
+        }
+
+        .review-status.rejected {
+            background: rgba(185, 28, 28, 0.10);
+            color: #991b1b;
+            border: 1px solid rgba(185, 28, 28, 0.16);
+        }
+
+    .admin-comment {
+        max-width: 300px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: #fff7f7;
+        border: 1px solid #fecaca;
+        color: #991b1b;
+        font-size: 12px;
+        line-height: 1.5;
+        font-weight: 600;
+    }
 </style>

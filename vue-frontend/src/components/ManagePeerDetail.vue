@@ -46,57 +46,39 @@
 
                 <div class="review-admin-grid four-col">
                     <div class="field-group">
-                        <label>Approve</label>
-                        <div class="toggle-row">
-                            <button type="button"
-                                    class="toggle-btn"
-                                    :class="{ active: form.approve === true }"
-                                    @click="setApprove(true)">
-                                Yes
-                            </button>
-                            <button type="button"
-                                    class="toggle-btn"
-                                    :class="{ active: form.approve !== true }"
-                                    @click="setApprove(false)">
-                                No
-                            </button>
-                        </div>
-                    </div>
+                        <label>Application Status</label>
 
-                    <div class="field-group">
-                        <label>Disapprove</label>
-                        <div class="toggle-row">
-                            <button type="button"
-                                    class="toggle-btn danger"
-                                    :class="{ active: form.disapprove === true }"
-                                    @click="setDisapprove(true)">
-                                Yes
-                            </button>
-                            <button type="button"
-                                    class="toggle-btn"
-                                    :class="{ active: form.disapprove !== true }"
-                                    @click="setDisapprove(false)">
-                                No
-                            </button>
-                        </div>
-                    </div>
+                        <select v-model="selectedAction"
+                                @change="onActionChanged">
 
-                    <div class="field-group">
-                        <label>Archive</label>
-                        <div class="toggle-row">
-                            <button type="button"
-                                    class="toggle-btn warning"
-                                    :class="{ active: form.isArchived === true }"
-                                    @click="setArchive(true)">
-                                Yes
-                            </button>
-                            <button type="button"
-                                    class="toggle-btn"
-                                    :class="{ active: form.isArchived !== true }"
-                                    @click="setArchive(false)">
-                                No
-                            </button>
-                        </div>
+                            <option value="">
+                                -- Select Status --
+                            </option>
+
+                            <option value="submitted">
+                                Move to Submitted Applicants
+                            </option>
+
+                            <option value="approve">
+                                Move to Successfully Approved
+                            </option>
+
+                            <option value="archive">
+                                Move to Archived Applicants
+                            </option>
+
+                            <option value="disapprove">
+                                Move to Disapproved Applicants
+                            </option>
+
+                            <option value="closed">
+                                Move to Closed Applicants
+                            </option>
+
+                            <option value="lapsed">
+                                Move to Lapsed Applicants
+                            </option>
+                        </select>
                     </div>
 
                     <div class="field-group">
@@ -394,6 +376,7 @@
         educationOptions: [],
         ethnicityOptions: [],
         raceOptions: [],
+        selectedAction: "",
 
         showDocumentModal: false,
         selectedDocument: null
@@ -401,12 +384,31 @@
 },
     computed: {
         statusText() {
-            if (this.form.isArchived === true || this.form.active === false) return "Archived";
-            if (this.form.approve === true) return "Approved";
-            if (this.form.disapprove === true) return "Disapproved";
-            if (this.form.active === true) return "Submitted";
-            return "In Progress";
-        },
+    if (this.form.closed === true) return "Closed";
+    if (this.form.lapsed === true) return "Lapsed";
+    if (this.form.approve === true) return "Approved";
+    if (this.form.disapprove === true) return "Disapproved";
+
+    if (
+        this.form.isArchived === true ||
+        (
+            this.form.active === false &&
+            this.form.closed !== true &&
+            this.form.lapsed !== true
+        )
+    ) {
+        return "Archived";
+    }
+
+    if (
+        this.form.active === true &&
+        Number(this.form.applicationPercentage || 0) === 100
+    ) {
+        return "Submitted";
+    }
+
+    return "In Progress";
+},
 
         hasAnyCertTrack() {
             return !!(
@@ -600,7 +602,58 @@ getCertificationTrackText() {
     }
 
     return this.form.certificationTracks.map(t => t.code).join(", ");
-},        setApprove(value) {
+},
+onActionChanged() {
+    // Reset all mutually exclusive statuses first.
+    this.form.approve = null;
+    this.form.disapprove = null;
+    this.form.closed = null;
+    this.form.lapsed = null;
+    this.form.isArchived = false;
+    this.form.reasonDisapprv = null;
+
+    switch (this.selectedAction) {
+        case "submitted":
+            this.form.active = true;
+            this.form.applicationPercentage = 100;
+            break;
+
+        case "approve":
+            this.form.approve = true;
+            this.form.active = true;
+            break;
+
+        case "disapprove":
+            this.form.disapprove = true;
+            this.form.active = true;
+            break;
+
+        case "archive":
+            this.form.isArchived = true;
+            this.form.active = false;
+            break;
+
+        case "closed":
+            this.form.closed = true;
+
+            // Neither true nor false because this is not active/submitted
+            // and is not archived.
+            this.form.active = null;
+            break;
+
+        case "lapsed":
+            this.form.lapsed = true;
+
+            // Neither true nor false because this is not active/submitted
+            // and is not archived.
+            this.form.active = null;
+            break;
+
+        default:
+            break;
+    }
+},
+setApprove(value) {
             if (value === true) {
                 this.form.approve = true;
                 this.form.disapprove = null;
@@ -680,10 +733,40 @@ getCertificationTrackText() {
                     certPrep: certificationTracks.some(x => x.code === "PREP"),
                     certCriminalJustice: certificationTracks.some(x => x.code === "CJ"),
 
-                    isArchived: data.active === false && data.approve !== true && data.disapprove !== true
-                };
+                    isArchived:
+    data.active === false &&
+    data.approve !== true &&
+    data.disapprove !== true &&
+    data.closed !== true &&
+    data.lapsed !== true
+};
 
-                this.applicantNumberError = false;
+if (data.closed === true) {
+    this.selectedAction = "closed";
+} else if (data.lapsed === true) {
+    this.selectedAction = "lapsed";
+} else if (data.approve === true) {
+    this.selectedAction = "approve";
+} else if (data.disapprove === true) {
+    this.selectedAction = "disapprove";
+} else if (
+    data.active === false &&
+    data.approve !== true &&
+    data.disapprove !== true &&
+    data.closed !== true &&
+    data.lapsed !== true
+) {
+    this.selectedAction = "archive";
+} else if (
+    data.active === true &&
+    Number(data.applicationPercentage || 0) === 100
+) {
+    this.selectedAction = "submitted";
+} else {
+    this.selectedAction = "";
+}
+
+this.applicantNumberError = false;
             } catch (error) {
                 console.error("fetchDetail error:", error);
                 alert(error?.message || "Failed to load peer detail.");
@@ -693,6 +776,10 @@ getCertificationTrackText() {
         },
 
         async saveChanges() {
+            if (!this.selectedAction) {
+    alert("Please select an application status.");
+    return;
+}   
             this.applicantNumberError = !this.form.applicantNumber;
 
             if (this.applicantNumberError) {
@@ -705,10 +792,47 @@ getCertificationTrackText() {
             try {
                const payload = {
     ApplicantNumber: this.form.applicantNumber,
-    Approve: this.form.isArchived ? null : this.form.approve,
-    Disapprove: this.form.isArchived ? null : this.form.disapprove,
-    Active: this.form.isArchived ? false : this.form.active,
-    ReasonDisapprv: this.form.reasonDisapprv,
+
+    Approve:
+        this.selectedAction === "approve"
+            ? true
+            : null,
+
+    Disapprove:
+        this.selectedAction === "disapprove"
+            ? true
+            : null,
+
+    Closed:
+        this.selectedAction === "closed"
+            ? true
+            : null,
+
+    Lapsed:
+        this.selectedAction === "lapsed"
+            ? true
+            : null,
+
+    Active:
+        this.selectedAction === "archive"
+            ? false
+            : (
+                this.selectedAction === "closed" ||
+                this.selectedAction === "lapsed"
+            )
+                ? null
+                : true,
+
+    ApplicationPercentage:
+        this.selectedAction === "submitted"
+            ? 100
+            : this.form.applicationPercentage,
+
+    ReasonDisapprv:
+        this.selectedAction === "disapprove"
+            ? this.form.reasonDisapprv
+            : null,
+
     Notes: this.form.notes,
 
     CertHivdate: this.form.certHivdate || null,

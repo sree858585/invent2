@@ -25,7 +25,10 @@
                             <option value="inprogress">View In Progress Applicants</option>
                             <option value="submitted">View Submitted Applicants</option>
                             <option value="approved">View Successfully Approved Applicants</option>
+                            <option value="disapproved">View Disapproved Applicants</option>
                             <option value="archived">View Archived Applicants</option>
+                            <option value="closed">View Closed Applicants</option>
+                            <option value="lapsed">View Lapsed Applicants</option>
                         </select>
                     </div>
 
@@ -209,15 +212,19 @@
             },
 
             selectedViewLabel() {
-                const map = {
-                    all: "All Applicants",
-                    inprogress: "In Progress",
-                    submitted: "Submitted",
-                    approved: "Approved",
-                    archived: "Archived"
-                };
-                return map[this.selectedView] || "All Applicants";
-            },
+    const map = {
+        all: "All Applicants",
+        inprogress: "In Progress",
+        submitted: "Submitted",
+        approved: "Approved",
+        disapproved: "Disapproved",
+        archived: "Archived",
+        closed: "Closed",
+        lapsed: "Lapsed"
+    };
+
+    return map[this.selectedView] || "All Applicants";
+},
 
             startRecord() {
                 if (this.totalRecords === 0) return 0;
@@ -361,14 +368,18 @@
             },
 
             statusClass(status) {
-                const normalized = (status || "").toLowerCase();
+    const normalized = (status || "").trim().toLowerCase();
 
-                if (normalized.includes("approved")) return "status-approved";
-                if (normalized.includes("archived")) return "status-archived";
-                if (normalized.includes("disapproved")) return "status-disapproved";
-                if (normalized.includes("submitted")) return "status-submitted";
-                return "status-pending";
-            },
+    if (normalized === "disapproved") return "status-disapproved";
+    if (normalized === "approved") return "status-approved";
+    if (normalized === "archived") return "status-archived";
+    if (normalized === "submitted") return "status-submitted";
+    if (normalized === "closed") return "status-closed";
+    if (normalized === "lapsed") return "status-lapsed";
+    if (normalized === "in progress") return "status-pending";
+
+    return "status-pending";
+},
 
             getInitials(name) {
                 if (!name) return "P";
@@ -811,5 +822,14 @@
         display: flex;
         flex-wrap: wrap;
         gap: 6px;
+    }
+    .status-closed {
+        color: #374151;
+        background: rgba(55, 65, 81, 0.14);
+    }
+
+    .status-lapsed {
+        color: #9a3412;
+        background: rgba(234, 88, 12, 0.14);
     }
 </style>
